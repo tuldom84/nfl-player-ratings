@@ -43,8 +43,9 @@ function PlayerCard({ player, useValue }: { player: Player; useValue?: boolean }
 }
 
 function DefenseCard({ defense }: { defense: TeamDefense }) {
-  const grade = defense.valueGrade ?? defense.grade
-  const label = defense.valueLabel ?? defense.gradeLabel
+  // Position-relative grade among DST only
+  const grade = defense.grade
+  const label = defense.gradeLabel
   return (
     <Link
       to={`/defense/${defense.id}`}
@@ -55,7 +56,9 @@ function DefenseCard({ defense }: { defense: TeamDefense }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-slate-100 truncate">{defense.name}</div>
-        <div className="text-xs text-slate-400">{defense.abbreviation} · DST</div>
+        <div className="text-xs text-slate-400">
+          {defense.abbreviation} · #{defense.rankValue ?? defense.rank} DST
+        </div>
       </div>
       <GradeBadge grade={grade} label={label} />
     </Link>
@@ -84,15 +87,13 @@ export default function Home() {
     )
   }
 
-  // Cross-position value ranking for Top Overall
   const topOverall = [...data.players]
     .sort((a, b) => (b.valueGrade ?? b.grade) - (a.valueGrade ?? a.grade))
     .slice(0, 15)
   const topByPos = (pos: string) =>
     data.players.filter((p) => p.position === pos).sort((a, b) => b.grade - a.grade).slice(0, 5)
-  const topDst = [...(data.defenses || [])]
-    .sort((a, b) => (b.valueGrade ?? b.grade) - (a.valueGrade ?? a.grade))
-    .slice(0, 5)
+  // Sort DST by position-relative grade
+  const topDst = [...(data.defenses || [])].sort((a, b) => b.grade - a.grade).slice(0, 5)
 
   return (
     <div className="px-4 pt-4 pb-8 space-y-8">
@@ -135,7 +136,8 @@ export default function Home() {
 
       {topDst.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-3 text-amber-400">Top DST</h2>
+          <h2 className="text-lg font-semibold mb-1 text-amber-400">Top DST</h2>
+          <p className="text-xs text-slate-500 mb-3">Position grade among defenses</p>
           <div className="space-y-2">
             {topDst.map((d) => (
               <DefenseCard key={d.id} defense={d} />
