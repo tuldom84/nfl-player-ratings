@@ -1,35 +1,64 @@
 export type Position = 'QB' | 'RB' | 'WR' | 'TE' | 'K' | 'DST'
 
+export type InjuryStatus =
+  | 'Active'
+  | 'Questionable'
+  | 'Doubtful'
+  | 'Out'
+  | 'Injured Reserve'
+  | 'Suspension'
+  | 'Unknown'
+
 export interface PlayerStats {
-  // Passing
   passYds?: number
   passTDs?: number
   interceptions?: number
   passAtt?: number
   completions?: number
-  // Rushing
   rushYds?: number
   rushTDs?: number
   carries?: number
-  // Receiving
   receptions?: number
   recYds?: number
   recTDs?: number
   targets?: number
-  // Kicking
   fgMade?: number
   fgAtt?: number
   xpMade?: number
-  // Defense / DST
   sacks?: number
   ints?: number
   fumblesRec?: number
   defTDs?: number
   ptsAllowed?: number
   yardsAllowed?: number
-  // General
   gamesPlayed?: number
   fantasyPts?: number
+}
+
+/** PPR fantasy metrics derived from season stats + matchup */
+export interface FantasyInfo {
+  /** Total full-PPR fantasy points this season */
+  seasonPts: number
+  /** Average full-PPR points per game */
+  avgPts: number
+  /** Games used for average (estimated if ESPN omits GP) */
+  games: number
+  /** This week's projected PPR points (avg × opponent factor × injury factor) */
+  projectedPts: number
+  /** Opponent team abbreviation (or BYE) */
+  opponent?: string
+  /** Home / Away / BYE */
+  homeAway?: 'home' | 'away' | 'bye'
+  /** Opponent DST grade 0–100 (higher = tougher) */
+  oppDstGrade?: number
+  /** Multiplier applied to avg for matchup (e.g. 0.88 tough, 1.12 soft) */
+  matchupMultiplier?: number
+  /** Human-readable matchup note */
+  matchupNote?: string
+  injuryStatus?: InjuryStatus
+  injuryDetail?: string
+  percentOwned?: number
+  positionRankEspn?: string
 }
 
 export interface Player {
@@ -43,10 +72,11 @@ export interface Player {
   jersey?: string
   headshot?: string
   stats: PlayerStats
-  grade: number          // 0-100 normalized weighted grade
-  gradeLabel: string     // Elite / Great / Solid / Average / Below
+  grade: number
+  gradeLabel: string
   rankOverall?: number
   rankPos?: number
+  fantasy?: FantasyInfo
   lastUpdated: string
 }
 
@@ -58,6 +88,7 @@ export interface TeamDefense {
   grade: number
   gradeLabel: string
   rank: number
+  fantasy?: FantasyInfo
   lastUpdated: string
 }
 
@@ -66,6 +97,7 @@ export interface DataMeta {
   nextSync: string
   season: number
   week: number
+  projectionWeek?: number
   source: string
   playerCount: number
   dstCount: number
