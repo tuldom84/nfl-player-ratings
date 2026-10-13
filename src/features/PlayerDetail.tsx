@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 
 function injuryColor(status?: string) {
@@ -11,6 +11,7 @@ function injuryColor(status?: string) {
 export default function PlayerDetail() {
   const { id } = useParams<{ id: string }>()
   const { data, loading } = useDataLake()
+  const navigate = useNavigate()
 
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
   const player = data?.players.find((p) => p.id === id)
@@ -28,11 +29,33 @@ export default function PlayerDetail() {
   const f = player.fantasy
   const week = data?.meta.projectionWeek || data?.meta.week
 
+  function addToCompare() {
+    if (!id) return
+    const params = new URLSearchParams(window.location.search)
+    // Read existing compare ids from session if any, else just this player
+    let ids: string[] = []
+    try {
+      const stored = sessionStorage.getItem('compare-ids')
+      if (stored) ids = JSON.parse(stored)
+    } catch { /* ignore */ }
+    if (!ids.includes(id)) ids = [...ids, id].slice(-5)
+    sessionStorage.setItem('compare-ids', JSON.stringify(ids))
+    navigate(`/compare?ids=${ids.join(',')}`)
+  }
+
   return (
     <div className="px-4 pt-4 pb-8">
-      <Link to="/rankings" className="text-sm text-emerald-400 mb-4 inline-block">
-        ← Rankings
-      </Link>
+      <div className="flex items-center justify-between mb-4">
+        <Link to="/rankings" className="text-sm text-emerald-400">
+          ← Rankings
+        </Link>
+        <button
+          onClick={addToCompare}
+          className="text-sm px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 active:bg-slate-700"
+        >
+          + Compare
+        </button>
+      </div>
 
       <div className="flex items-start gap-4 mb-4">
         <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-xl font-bold text-slate-400">
@@ -60,7 +83,6 @@ export default function PlayerDetail() {
         </div>
       </div>
 
-      {/* Fantasy summary */}
       {f && (
         <section className="mb-6 grid grid-cols-3 gap-2">
           <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 text-center">
