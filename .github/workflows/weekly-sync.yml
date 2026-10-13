@@ -1,0 +1,32 @@
+name: Weekly ESPN Data Sync
+
+on:
+  schedule:
+    # Every Tuesday at 10:00 UTC (≈ 6 AM EDT)
+    - cron: '0 10 * * 2'
+  workflow_dispatch: # allow manual runs
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run data sync
+        run: npm run sync
+
+      - name: Commit updated data lake
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/latest.json
+          git diff --staged --quiet || git commit -m "chore: weekly ESPN data lake sync $(date -u +%Y-%m-%d)"
+          git push
