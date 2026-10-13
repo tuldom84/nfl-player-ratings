@@ -31,8 +31,6 @@ export default function PlayerDetail() {
 
   function addToCompare() {
     if (!id) return
-    const params = new URLSearchParams(window.location.search)
-    // Read existing compare ids from session if any, else just this player
     let ids: string[] = []
     try {
       const stored = sessionStorage.getItem('compare-ids')
@@ -72,16 +70,38 @@ export default function PlayerDetail() {
               {f.injuryStatus}
             </span>
           )}
-          <div className="mt-2 flex items-center gap-2">
-            <span className="text-3xl font-bold text-emerald-400">{player.grade.toFixed(1)}</span>
-            <span className="text-sm text-slate-400">{player.gradeLabel}</span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Overall #{player.rankOverall} · Pos #{player.rankPos}
-            {f?.positionRankEspn ? ` · ESPN #${f.positionRankEspn}` : ''}
-          </p>
         </div>
       </div>
+
+      {/* Dual grades */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="bg-slate-900 rounded-xl p-3 border border-emerald-800/40">
+          <div className="text-[10px] uppercase tracking-wide text-slate-500">Value grade</div>
+          <div className="text-2xl font-bold text-emerald-400 tabular-nums">
+            {(player.valueGrade ?? player.grade).toFixed(1)}
+          </div>
+          <div className="text-xs text-slate-400">{player.valueLabel ?? player.gradeLabel}</div>
+          <div className="text-[10px] text-slate-500 mt-1">
+            Cross-pos · #{player.rankOverall ?? '—'} overall
+          </div>
+        </div>
+        <div className="bg-slate-900 rounded-xl p-3 border border-slate-800">
+          <div className="text-[10px] uppercase tracking-wide text-slate-500">Pos grade</div>
+          <div className="text-2xl font-bold text-sky-400 tabular-nums">{player.grade.toFixed(1)}</div>
+          <div className="text-xs text-slate-400">{player.gradeLabel}</div>
+          <div className="text-[10px] text-slate-500 mt-1">
+            vs other {player.position}s · #{player.rankPos ?? '—'}
+          </div>
+        </div>
+      </div>
+
+      {player.availability != null && (
+        <p className="text-xs text-slate-500 mb-4">
+          Availability {Math.round(player.availability * 100)}%
+          {f?.games != null ? ` (${f.games} games played)` : ''}
+          {' · '}Value uses PPG × availability × PPR pos weight
+        </p>
+      )}
 
       {f && (
         <section className="mb-6 grid grid-cols-3 gap-2">
@@ -152,8 +172,10 @@ export default function PlayerDetail() {
       </div>
 
       <p className="mt-8 text-xs text-slate-500 leading-relaxed">
-        Full-PPR scoring (1 pt/rec). Weekly projection = season average × opponent DST factor
-        (tougher defenses lower the projection) × injury availability. Data refreshed Tuesdays.
+        <strong className="text-slate-400">Value grade</strong> ranks everyone together using
+        full-PPR avg PPG × availability (GP/team games) × positional weight (RB/WR highest).
+        <strong className="text-slate-400"> Pos grade</strong> is only vs the same position.
+        Weekly projection still adjusts for opponent DST and injury.
       </p>
     </div>
   )
