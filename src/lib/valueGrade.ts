@@ -5,6 +5,8 @@
  *  1. Scoring output — season average PPR points per game (using games played)
  *  2. Availability — gamesPlayed / teamGamesPlayed (not games started)
  *  3. Positional value — PPR scarcity weights by position
+ *
+ * Never overwrites position-relative `grade` / `gradeLabel` / DST `rank`.
  */
 
 import type { Position, DataLake } from './types'
@@ -34,7 +36,6 @@ function normalize(values: number[]): number[] {
   return values.map((v) => ((v - min) / range) * 100)
 }
 
-/** Prefer explicit teamGamesPlayed; else max GP / week */
 function resolveTeamGames(lake: DataLake, player: {
   fantasy?: { games?: number; teamGamesPlayed?: number; gamesPlayed?: number }
   stats: { gamesPlayed?: number; teamGamesPlayed?: number }
@@ -65,7 +66,6 @@ function resolveGamesPlayed(player: {
   fantasy?: { games?: number; gamesPlayed?: number }
   stats: { gamesPlayed?: number }
 }): number {
-  // Never use gamesStarted
   return (
     player.stats.gamesPlayed ||
     player.fantasy?.gamesPlayed ||
@@ -108,10 +108,7 @@ export function applyValueGrades(lake: DataLake): DataLake {
   })
 
   lake.defenses.forEach((d, index) => {
-    const games = resolveGamesPlayed({
-      fantasy: d.fantasy,
-      stats: d.stats,
-    })
+    const games = resolveGamesPlayed({ fantasy: d.fantasy, stats: d.stats })
     const avgPts = d.fantasy?.avgPts ?? 0
     const teamGames = resolveTeamGames(lake, { fantasy: d.fantasy, stats: d.stats })
     const { valueRaw, availability } = computeValueRaw(avgPts, games, teamGames, 'DST')
@@ -119,6 +116,7 @@ export function applyValueGrades(lake: DataLake): DataLake {
   })
 
   const norms = normalize(rows.map((r) => r.valueRaw))
+  // Shallow copy — never mutate grade / gradeLabel / rank from the data lake
   const players = lake.players.map((p) => ({ ...p }))
   const defenses = lake.defenses.map((d) => ({ ...d }))
 
@@ -138,34 +136,29 @@ export function applyValueGrades(lake: DataLake): DataLake {
         valueGrade,
         valueLabel,
         availability: Math.round(r.availability * 1000) / 1000,
+        // Keep original position-relative rank from sync (do not overwrite `rank`)
       }
     }
   })
 
+  // rankValue = rank by cross-position value (players only)
   const rankedPlayers = [...players].sort((a, b) => (b.valueGrade ?? 0) - (a.valueGrade ?? 0))
   rankedPlayers.forEach((p, i) => {
     const target = players.find((x) => x.id === p.id)
-    if (target) target.rankValue = i + 1
+    if (target) {
+      target.rankValue = i + 1
+      target.rankOverall = i + 1
+    }
   })
 
-  const rankedDef = [...defenses].sort((a, b) => (b.valueGrade ?? 0) - (a.valueGrade ?? 0))
-  rankedDef.forEach((d, i) => {
+  // DST rankValue = rank by position grade (among defenses), not overall value
+  const rankedDefByPos = [...defenses].sort((a, b) => b.grade - a.grade)
+  rankedDefByPos.forEach((d, i) => {
     const target = defenses.find((x) => x.id === d.id)
-    if (target) target.rankValue = i + 1
-  })
-
-  const allEntities = [
-    ...players.map((p) => ({ id: p.id, kind: 'player' as const, valueGrade: p.valueGrade ?? 0 })),
-    ...defenses.map((d) => ({ id: d.id, kind: 'dst' as const, valueGrade: d.valueGrade ?? 0 })),
-  ].sort((a, b) => b.valueGrade - a.valueGrade)
-
-  allEntities.forEach((e, i) => {
-    if (e.kind === 'player') {
-      const p = players.find((x) => x.id === e.id)
-      if (p) p.rankOverall = i + 1
-    } else {
-      const d = defenses.find((x) => x.id === e.id)
-      if (d) d.rank = i + 1
+    if (target) {
+      target.rankValue = i + 1
+      // Ensure rank stays position-based
+      target.rank = i + 1
     }
   })
 
