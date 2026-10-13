@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import type { DataLake, Player } from '../lib/types'
 import { applyValueGrades } from '../lib/valueGrade'
 
-const CACHE_KEY = 'nfl-ratings-datalake-v2'
+const CACHE_KEY = 'nfl-ratings-datalake-v3'
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7 // 1 week
 
 async function fetchLake(base: string): Promise<DataLake> {
   try {
-    const res = await fetch(`${base}data/latest.json`, { cache: 'default' })
+    const res = await fetch(`${base}data/latest.json`, { cache: 'no-cache' })
     if (res.ok) {
       const payload = await res.json()
       if (payload?.players?.length) return applyValueGrades(payload as DataLake)
@@ -16,13 +16,13 @@ async function fetchLake(base: string): Promise<DataLake> {
     /* fall through */
   }
 
-  const metaRes = await fetch(`${base}data/meta.json`, { cache: 'default' })
+  const metaRes = await fetch(`${base}data/meta.json`, { cache: 'no-cache' })
   if (!metaRes.ok) throw new Error(`Failed to load data lake (${metaRes.status})`)
   const metaFile = await metaRes.json()
   const chunkCount = metaFile.playerChunks || 0
   const players: Player[] = []
   for (let i = 0; i < chunkCount; i++) {
-    const r = await fetch(`${base}data/players-${i}.json`, { cache: 'default' })
+    const r = await fetch(`${base}data/players-${i}.json`, { cache: 'no-cache' })
     if (!r.ok) throw new Error(`Failed to load players chunk ${i}`)
     const part = await r.json()
     players.push(...part)
@@ -52,7 +52,6 @@ export function useDataLake() {
           const parsed = JSON.parse(cached) as { ts: number; payload: DataLake }
           if (Date.now() - parsed.ts < CACHE_TTL_MS && parsed.payload?.players?.length) {
             if (!cancelled) {
-              // Re-apply in case algorithm updated
               setData(applyValueGrades(parsed.payload))
               setLoading(false)
             }
