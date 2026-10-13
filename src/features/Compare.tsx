@@ -7,6 +7,9 @@ const MAX = 5
 const STORAGE_KEY = 'compare-ids'
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K']
 
+type AdviceMode = null | 'startSit' | 'trade'
+type TeamSide = 'A' | 'B' | 'none'
+
 function readInitialIds(searchParams: URLSearchParams): string[] {
   const fromUrl = (searchParams.get('ids') || '')
     .split(',')
@@ -23,12 +26,35 @@ function readInitialIds(searchParams: URLSearchParams): string[] {
   return []
 }
 
+function letterFromScore(score: number): { letter: string; label: string } {
+  // score is relative advantage in points / value units
+  if (score >= 12) return { letter: 'A+', label: 'Steal' }
+  if (score >= 8) return { letter: 'A', label: 'Excellent' }
+  if (score >= 5) return { letter: 'B+', label: 'Strong' }
+  if (score >= 2.5) return { letter: 'B', label: 'Good' }
+  if (score >= 1) return { letter: 'C+', label: 'Slight edge' }
+  if (score >= -1) return { letter: 'C', label: 'Even' }
+  if (score >= -2.5) return { letter: 'C-', label: 'Slight loss' }
+  if (score >= -5) return { letter: 'D', label: 'Poor' }
+  if (score >= -8) return { letter: 'D-', label: 'Bad' }
+  return { letter: 'F', label: 'Avoid' }
+}
+
+function playerValue(p: Player): number {
+  // Season-long trade value proxy: avg PPG weighted by value grade availability
+  const avg = p.fantasy?.avgPts ?? 0
+  const vg = (p.valueGrade ?? p.grade) / 100
+  return avg * (0.6 + 0.4 * vg)
+}
+
 export default function Compare() {
   const { data, loading, error } = useDataLake()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedIds, setSelectedIds] = useState<string[]>(() => readInitialIds(searchParams))
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState<Position | 'ALL'>('ALL')
+  const [advice, setAdvice] = useState<AdviceMode>(null)
+  const [tradeSide, setTradeSide] = useState<Record<string, TeamSide>>({})
 
   useEffect(() => {
     if (selectedIds.length) {
@@ -39,6 +65,15 @@ export default function Compare() {
       sessionStorage.removeItem(STORAGE_KEY)
     }
   }, [selectedIds, setSearchParams])
+
+  // Reset trade sides when selection changes
+  useEffect(() => {
+    setTradeSide((prev) => {
+      const next: Record<string, TeamSide> = {}
+      for (const id of selectedIds) next[id] = prev[id] || 'none'
+      return next
+    })
+  }, [selectedIds])
 
   const selected: Player[] = useMemo(() => {
     if (!data) return []
@@ -75,7 +110,66 @@ export default function Compare() {
 
   function clearAll() {
     setSelectedIds([])
+    setAdvice(null)
   }
+
+  const startSitResult = useMemo(() => {
+    if (selected.length < 2) return null
+    const ranked = [...selected].sort(
+      (a, b) => (b.fantasy?.projectedPts ?? -1) - (a.fantasy?.projectedPts ?? -1)
+    )
+    const winner = ranked[0]
+    const runner = ranked[1]
+    const wProj = winner.fantasy?.projectedPts ?? 0
+    const rProj = runner.fantasy?.projectedPts ?? 0
+    const margin = Math.round((wProj - rProj) * 10) / 10
+    const notes: string[] = []
+    for (const p of ranked) {
+      const f = p.fantasy
+      if (!f) continue
+      if (f.homeAway === 'bye') notes.push(`${p.name}: BYE — do not start`)
+      else if (f.injuryStatus && f.injuryStatus !== 'Active')
+        notes.push(`${p.name}: ${f.injuryStatus}${f.injuryDetail ? ` — ${f.injuryDetail}` : ''}`)
+      else if (f.matchupNote && /Tough|Favorable/.test(f.matchupNote))
+        notes.push(`${p.name}: ${f.matchupNote}`)
+    }
+    return { ranked, winner, margin, notes, wProj, rProj }
+  }, [selected])
+
+  const tradeResult = useMemo(() => {
+    const teamA = selected.filter((p) => tradeSide[p.id] === 'A')
+    const teamB = selected.filter((p) => tradeSide[p.id] === 'B')
+    if (!teamA.length || !teamB.length) return null
+
+    const valA = teamA.reduce((s, p) => s + playerValue(p), 0)
+    const valB = teamB.reduce((s, p) => s + playerValue(p), 0)
+    const avgA = teamA.reduce((s, p) => s + (p.fantasy?.avgPts ?? 0), 0)
+    const avgB = teamB.reduce((s, p) => s + (p.fantasy?.avgPts ?? 0), 0)
+    const projA = teamA.reduce((s, p) => s + (p.fantasy?.projectedPts ?? 0), 0)
+    const projB = teamB.reduce((s, p) => s + (p.fantasy?.projectedPts ?? 0), 0)
+
+    // From each team's perspective: what they receive minus what they give
+    // Team A gives teamA, receives teamB
+    const edgeA = valB - valA
+    const edgeB = valA - valB
+    const gradeA = letterFromScore(edgeA)
+    const gradeB = letterFromScore(edgeB)
+
+    return {
+      teamA,
+      teamB,
+      valA: Math.round(valA * 10) / 10,
+      valB: Math.round(valB * 10) / 10,
+      avgA: Math.round(avgA * 10) / 10,
+      avgB: Math.round(avgB * 10) / 10,
+      projA: Math.round(projA * 10) / 10,
+      projB: Math.round(projB * 10) / 10,
+      gradeA,
+      gradeB,
+      edgeA: Math.round(edgeA * 10) / 10,
+      edgeB: Math.round(edgeB * 10) / 10,
+    }
+  }, [selected, tradeSide])
 
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
   if (error || !data) return <div className="p-6 text-rose-400">{error || 'No data'}</div>
@@ -83,8 +177,8 @@ export default function Compare() {
   const week = data.meta.projectionWeek || data.meta.week
 
   const rows: { label: string; key: string; better?: 'high' | 'low'; format: (p: Player) => string }[] = [
-    { label: 'Grade', key: 'grade', better: 'high', format: (p) => p.grade.toFixed(1) },
-    { label: 'Label', key: 'label', format: (p) => p.gradeLabel },
+    { label: 'Value', key: 'value', better: 'high', format: (p) => (p.valueGrade ?? p.grade).toFixed(1) },
+    { label: 'Pos grade', key: 'grade', better: 'high', format: (p) => p.grade.toFixed(1) },
     { label: 'Pos rank', key: 'rankPos', better: 'low', format: (p) => (p.rankPos != null ? `#${p.rankPos}` : '—') },
     { label: 'Avg PPG', key: 'avg', better: 'high', format: (p) => p.fantasy?.avgPts?.toFixed(1) ?? '—' },
     { label: `Wk ${week} proj`, key: 'proj', better: 'high', format: (p) => p.fantasy?.projectedPts?.toFixed(1) ?? '—' },
@@ -227,7 +321,7 @@ export default function Compare() {
       )}
 
       {selected.length >= 1 && (
-        <div className="overflow-x-auto -mx-4 px-4">
+        <div className="overflow-x-auto -mx-4 px-4 mb-6">
           <table className="w-full text-sm border-collapse min-w-[320px]">
             <thead>
               <tr>
@@ -277,12 +371,238 @@ export default function Compare() {
         </div>
       )}
 
+      {/* Advice buttons */}
+      {selected.length >= 2 && (
+        <div className="flex gap-3 mb-4">
+          <button
+            onClick={() => setAdvice(advice === 'startSit' ? null : 'startSit')}
+            className={`flex-1 py-3 rounded-xl text-sm font-semibold border transition-colors ${
+              advice === 'startSit'
+                ? 'bg-emerald-600 border-emerald-500 text-white'
+                : 'bg-slate-900 border-slate-700 text-emerald-400 active:bg-slate-800'
+            }`}
+          >
+            Start / Sit
+          </button>
+          <button
+            onClick={() => setAdvice(advice === 'trade' ? null : 'trade')}
+            className={`flex-1 py-3 rounded-xl text-sm font-semibold border transition-colors ${
+              advice === 'trade'
+                ? 'bg-sky-600 border-sky-500 text-white'
+                : 'bg-slate-900 border-slate-700 text-sky-400 active:bg-slate-800'
+            }`}
+          >
+            Trade advice
+          </button>
+        </div>
+      )}
+
+      {/* Start/Sit panel */}
+      {advice === 'startSit' && startSitResult && (
+        <div className="rounded-xl border border-emerald-800/50 bg-slate-900/80 p-4 mb-4 space-y-3">
+          <h2 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide">
+            Week {week} Start / Sit
+          </h2>
+          <div className="text-center py-2">
+            <p className="text-xs text-slate-500 mb-1">Start</p>
+            <p className="text-xl font-bold text-emerald-400">{startSitResult.winner.name}</p>
+            <p className="text-sm text-slate-300 tabular-nums">
+              {startSitResult.wProj.toFixed(1)} proj
+              {startSitResult.margin > 0 && (
+                <span className="text-slate-500"> · +{startSitResult.margin.toFixed(1)} vs next</span>
+              )}
+            </p>
+          </div>
+          <ol className="space-y-2">
+            {startSitResult.ranked.map((p, i) => {
+              const proj = p.fantasy?.projectedPts ?? 0
+              const isBye = p.fantasy?.homeAway === 'bye'
+              return (
+                <li
+                  key={p.id}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+                    i === 0 ? 'bg-emerald-950/50 border border-emerald-800/40' : 'bg-slate-950/50'
+                  }`}
+                >
+                  <span className="w-6 text-center text-xs text-slate-500">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{p.name}</div>
+                    <div className="text-xs text-slate-500">
+                      {p.position} · {p.team}
+                      {isBye
+                        ? ' · BYE'
+                        : p.fantasy?.opponent
+                          ? ` · ${p.fantasy.homeAway === 'home' ? 'vs' : '@'} ${p.fantasy.opponent}`
+                          : ''}
+                    </div>
+                  </div>
+                  <span
+                    className={`tabular-nums font-semibold ${
+                      isBye ? 'text-rose-400' : i === 0 ? 'text-emerald-400' : 'text-slate-300'
+                    }`}
+                  >
+                    {isBye ? '0.0' : proj.toFixed(1)}
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+          {startSitResult.notes.length > 0 && (
+            <ul className="text-xs text-slate-400 space-y-1 pt-1 border-t border-slate-800">
+              {startSitResult.notes.map((n, i) => (
+                <li key={i}>• {n}</li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[10px] text-slate-600">
+            Ranked by week {week} projected full-PPR points (matchup + injury adjusted).
+          </p>
+        </div>
+      )}
+
+      {/* Trade panel */}
+      {advice === 'trade' && (
+        <div className="rounded-xl border border-sky-800/50 bg-slate-900/80 p-4 mb-4 space-y-4">
+          <h2 className="text-sm font-semibold text-sky-400 uppercase tracking-wide">
+            Trade evaluator
+          </h2>
+          <p className="text-xs text-slate-400">
+            Assign each player to <span className="text-emerald-400 font-medium">Team A</span> or{' '}
+            <span className="text-sky-400 font-medium">Team B</span> (who is giving them away).
+          </p>
+
+          <ul className="space-y-2">
+            {selected.map((p) => {
+              const side = tradeSide[p.id] || 'none'
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center gap-2 px-2 py-2 rounded-lg bg-slate-950/60"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate text-sm">{p.name}</div>
+                    <div className="text-[10px] text-slate-500">
+                      {p.position} · {(p.fantasy?.avgPts ?? 0).toFixed(1)} avg ·{' '}
+                      {(p.valueGrade ?? p.grade).toFixed(0)} val
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {(['A', 'B'] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() =>
+                          setTradeSide((prev) => ({
+                            ...prev,
+                            [p.id]: prev[p.id] === s ? 'none' : s,
+                          }))
+                        }
+                        className={`w-9 h-9 rounded-lg text-sm font-bold border ${
+                          side === s
+                            ? s === 'A'
+                              ? 'bg-emerald-600 border-emerald-500 text-white'
+                              : 'bg-sky-600 border-sky-500 text-white'
+                            : 'bg-slate-900 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {tradeResult ? (
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <TradeGradeCard
+                title="Team A"
+                color="emerald"
+                letter={tradeResult.gradeA.letter}
+                label={tradeResult.gradeA.label}
+                gives={tradeResult.teamA.map((p) => p.name.split(' ').slice(-1)[0]).join(', ')}
+                gets={tradeResult.teamB.map((p) => p.name.split(' ').slice(-1)[0]).join(', ')}
+                valueDelta={tradeResult.edgeA}
+                avgDelta={Math.round((tradeResult.avgB - tradeResult.avgA) * 10) / 10}
+              />
+              <TradeGradeCard
+                title="Team B"
+                color="sky"
+                letter={tradeResult.gradeB.letter}
+                label={tradeResult.gradeB.label}
+                gives={tradeResult.teamB.map((p) => p.name.split(' ').slice(-1)[0]).join(', ')}
+                gets={tradeResult.teamA.map((p) => p.name.split(' ').slice(-1)[0]).join(', ')}
+                valueDelta={tradeResult.edgeB}
+                avgDelta={Math.round((tradeResult.avgA - tradeResult.avgB) * 10) / 10}
+              />
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 text-center py-2">
+              Assign at least one player to each side
+            </p>
+          )}
+
+          <p className="text-[10px] text-slate-600">
+            Grades use avg PPG × value grade. A+ = big win · C = even · F = major loss for that team.
+          </p>
+        </div>
+      )}
+
       {selected.length === 0 && (
         <div className="mt-8 text-center text-slate-500 text-sm">
           <p className="mb-2">Search above to add players</p>
           <p className="text-xs">Tip: open a player and tap “+ Compare”</p>
         </div>
       )}
+
+      {selected.length === 1 && (
+        <p className="text-xs text-slate-500 text-center mt-4">
+          Add at least one more player for Start/Sit or Trade advice
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TradeGradeCard({
+  title,
+  color,
+  letter,
+  label,
+  gives,
+  gets,
+  valueDelta,
+  avgDelta,
+}: {
+  title: string
+  color: 'emerald' | 'sky'
+  letter: string
+  label: string
+  gives: string
+  gets: string
+  valueDelta: number
+  avgDelta: number
+}) {
+  const border = color === 'emerald' ? 'border-emerald-800/50' : 'border-sky-800/50'
+  const text = color === 'emerald' ? 'text-emerald-400' : 'text-sky-400'
+  return (
+    <div className={`rounded-xl border ${border} bg-slate-950/60 p-3 text-center`}>
+      <div className={`text-xs font-medium ${text} mb-1`}>{title}</div>
+      <div className={`text-3xl font-black ${text}`}>{letter}</div>
+      <div className="text-xs text-slate-400 mb-2">{label}</div>
+      <div className="text-[10px] text-slate-500 text-left space-y-0.5">
+        <div>
+          <span className="text-slate-600">Gives:</span> {gives || '—'}
+        </div>
+        <div>
+          <span className="text-slate-600">Gets:</span> {gets || '—'}
+        </div>
+        <div className="pt-1 tabular-nums">
+          Value {valueDelta >= 0 ? '+' : ''}
+          {valueDelta} · PPG {avgDelta >= 0 ? '+' : ''}
+          {avgDelta}
+        </div>
+      </div>
     </div>
   )
 }
