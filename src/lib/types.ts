@@ -31,14 +31,22 @@ export interface PlayerStats {
   defTDs?: number
   ptsAllowed?: number
   yardsAllowed?: number
+  /** True games played (not games started) */
   gamesPlayed?: number
+  /** Team's games in the season so far */
+  teamGamesPlayed?: number
+  /** Games started — informational only; not used in averages */
+  gamesStarted?: number
   fantasyPts?: number
 }
 
 export interface FantasyInfo {
   seasonPts: number
   avgPts: number
+  /** Alias for gamesPlayed used in averages */
   games: number
+  gamesPlayed?: number
+  teamGamesPlayed?: number
   projectedPts: number
   opponent?: string
   homeAway?: 'home' | 'away' | 'bye'
@@ -63,17 +71,14 @@ export interface Player {
   jersey?: string
   headshot?: string
   stats: PlayerStats
-  /** Position-relative grade (0–100 within same position) */
   grade: number
   gradeLabel: string
-  /** Cross-position PPR value grade (PPG × availability × pos weight) */
   valueGrade?: number
   valueLabel?: string
-  /** gamesPlayed / teamGames (0–1) */
+  /** gamesPlayed / teamGamesPlayed (0–1) */
   availability?: number
   rankOverall?: number
   rankPos?: number
-  /** Rank by valueGrade among players only */
   rankValue?: number
   fantasy?: FantasyInfo
   lastUpdated: string
