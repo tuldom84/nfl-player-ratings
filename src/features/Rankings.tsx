@@ -11,6 +11,11 @@ type RankRow = {
   team: string
   position: string
   grade: number
+  avgPts?: number
+  projectedPts?: number
+  opponent?: string
+  homeAway?: string
+  injuryStatus?: string
   isDefense?: boolean
 }
 
@@ -18,6 +23,7 @@ export default function Rankings() {
   const { data, loading, error } = useDataLake()
   const [pos, setPos] = useState<Position | 'ALL'>('ALL')
   const [query, setQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'grade' | 'proj' | 'avg'>('grade')
 
   const filtered = useMemo(() => {
     if (!data) return [] as RankRow[]
@@ -31,6 +37,10 @@ export default function Rankings() {
         team: d.abbreviation || '',
         position: 'DST',
         grade: d.grade,
+        avgPts: d.fantasy?.avgPts,
+        projectedPts: d.fantasy?.projectedPts,
+        opponent: d.fantasy?.opponent,
+        homeAway: d.fantasy?.homeAway,
         isDefense: true,
       }))
     } else if (pos === 'ALL') {
@@ -41,6 +51,11 @@ export default function Rankings() {
           team: p.team,
           position: p.position,
           grade: p.grade,
+          avgPts: p.fantasy?.avgPts,
+          projectedPts: p.fantasy?.projectedPts,
+          opponent: p.fantasy?.opponent,
+          homeAway: p.fantasy?.homeAway,
+          injuryStatus: p.fantasy?.injuryStatus,
         })),
         ...(data.defenses || []).map((d) => ({
           id: d.id,
@@ -48,6 +63,10 @@ export default function Rankings() {
           team: d.abbreviation || '',
           position: 'DST',
           grade: d.grade,
+          avgPts: d.fantasy?.avgPts,
+          projectedPts: d.fantasy?.projectedPts,
+          opponent: d.fantasy?.opponent,
+          homeAway: d.fantasy?.homeAway,
           isDefense: true,
         })),
       ]
@@ -60,6 +79,11 @@ export default function Rankings() {
           team: p.team,
           position: p.position,
           grade: p.grade,
+          avgPts: p.fantasy?.avgPts,
+          projectedPts: p.fantasy?.projectedPts,
+          opponent: p.fantasy?.opponent,
+          homeAway: p.fantasy?.homeAway,
+          injuryStatus: p.fantasy?.injuryStatus,
         }))
     }
 
@@ -72,15 +96,24 @@ export default function Rankings() {
       )
     }
 
-    return [...list].sort((a, b) => b.grade - a.grade)
-  }, [data, pos, query])
+    return [...list].sort((a, b) => {
+      if (sortBy === 'proj') return (b.projectedPts ?? 0) - (a.projectedPts ?? 0)
+      if (sortBy === 'avg') return (b.avgPts ?? 0) - (a.avgPts ?? 0)
+      return b.grade - a.grade
+    })
+  }, [data, pos, query, sortBy])
 
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
   if (error || !data) return <div className="p-6 text-rose-400">{error || 'No data'}</div>
 
+  const week = data.meta.projectionWeek || data.meta.week
+
   return (
     <div className="px-4 pt-4 pb-8">
-      <h1 className="text-2xl font-bold mb-4">Rankings</h1>
+      <h1 className="text-2xl font-bold mb-1">Rankings</h1>
+      <p className="text-xs text-slate-500 mb-3">
+        Full-PPR · Week {week} projections vs opponent DST
+      </p>
 
       <input
         type="search"
@@ -90,18 +123,30 @@ export default function Rankings() {
         className="w-full mb-3 px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
       />
 
-      <div className="flex gap-2 overflow-x-auto pb-3 mb-4 -mx-1 px-1">
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
         {POSITIONS.map((p) => (
           <button
             key={p}
             onClick={() => setPos(p)}
             className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              pos === p
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-800 text-slate-300'
+              pos === p ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'
             }`}
           >
             {p}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mb-3 text-xs">
+        {(['grade', 'proj', 'avg'] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setSortBy(s)}
+            className={`px-3 py-1 rounded-full ${
+              sortBy === s ? 'bg-slate-700 text-white' : 'text-slate-500'
+            }`}
+          >
+            {s === 'grade' ? 'Grade' : s === 'proj' ? `Wk ${week} Proj` : 'Avg PPG'}
           </button>
         ))}
       </div>
@@ -112,37 +157,50 @@ export default function Rankings() {
 
       <ul className="space-y-1">
         {filtered.map((p, idx) => {
+          const inj =
+            p.injuryStatus && p.injuryStatus !== 'Active' ? (
+              <span className="ml-1 text-[10px] text-rose-400 font-medium">{p.injuryStatus}</span>
+            ) : null
+          const matchup =
+            p.homeAway === 'bye'
+              ? 'BYE'
+              : p.opponent
+                ? `${p.homeAway === 'home' ? 'vs' : '@'} ${p.opponent}`
+                : ''
+
           const inner = (
             <>
-              <span className="w-7 text-right text-sm text-slate-500 tabular-nums">
-                {idx + 1}
-              </span>
+              <span className="w-7 text-right text-sm text-slate-500 tabular-nums">{idx + 1}</span>
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{p.name}</div>
+                <div className="font-medium truncate">
+                  {p.name}
+                  {inj}
+                </div>
                 <div className="text-xs text-slate-400">
                   {p.isDefense ? 'Team Defense' : `${p.team} · ${p.position}`}
+                  {matchup ? ` · ${matchup}` : ''}
                 </div>
               </div>
-              <span className="text-emerald-400 font-semibold tabular-nums">
-                {p.grade.toFixed(0)}
-              </span>
+              <div className="text-right">
+                <div className="text-emerald-400 font-semibold tabular-nums text-sm">
+                  {p.projectedPts != null ? p.projectedPts.toFixed(1) : '—'}
+                  <span className="text-[10px] text-slate-500 font-normal"> proj</span>
+                </div>
+                <div className="text-[10px] text-slate-500 tabular-nums">
+                  {p.avgPts != null ? `${p.avgPts.toFixed(1)} avg` : ''} · {p.grade.toFixed(0)}g
+                </div>
+              </div>
             </>
           )
 
           return (
             <li key={`${p.position}-${p.id}`}>
               {p.isDefense ? (
-                <Link
-                  to={`/defense/${p.id}`}
-                  className="flex items-center gap-3 py-3 px-2 rounded-lg active:bg-slate-900"
-                >
+                <Link to={`/defense/${p.id}`} className="flex items-center gap-3 py-3 px-2 rounded-lg active:bg-slate-900">
                   {inner}
                 </Link>
               ) : (
-                <Link
-                  to={`/player/${p.id}`}
-                  className="flex items-center gap-3 py-3 px-2 rounded-lg active:bg-slate-900"
-                >
+                <Link to={`/player/${p.id}`} className="flex items-center gap-3 py-3 px-2 rounded-lg active:bg-slate-900">
                   {inner}
                 </Link>
               )}
