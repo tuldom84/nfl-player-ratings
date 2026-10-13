@@ -35,30 +35,21 @@ export interface PlayerStats {
   fantasyPts?: number
 }
 
-/** PPR fantasy metrics derived from season stats + matchup */
 export interface FantasyInfo {
-  /** Total full-PPR fantasy points this season */
   seasonPts: number
-  /** Average full-PPR points per game */
   avgPts: number
-  /** Games used for average (estimated if ESPN omits GP) */
   games: number
-  /** This week's projected PPR points (avg × opponent factor × injury factor) */
   projectedPts: number
-  /** Opponent team abbreviation (or BYE) */
   opponent?: string
-  /** Home / Away / BYE */
   homeAway?: 'home' | 'away' | 'bye'
-  /** Opponent DST grade 0–100 (higher = tougher) */
   oppDstGrade?: number
-  /** Multiplier applied to avg for matchup (e.g. 0.88 tough, 1.12 soft) */
   matchupMultiplier?: number
-  /** Human-readable matchup note */
   matchupNote?: string
   injuryStatus?: InjuryStatus
   injuryDetail?: string
   percentOwned?: number
   positionRankEspn?: string
+  projectionWeek?: number
 }
 
 export interface Player {
@@ -72,10 +63,18 @@ export interface Player {
   jersey?: string
   headshot?: string
   stats: PlayerStats
+  /** Position-relative grade (0–100 within same position) */
   grade: number
   gradeLabel: string
+  /** Cross-position PPR value grade (PPG × availability × pos weight) */
+  valueGrade?: number
+  valueLabel?: string
+  /** gamesPlayed / teamGames (0–1) */
+  availability?: number
   rankOverall?: number
   rankPos?: number
+  /** Rank by valueGrade among players only */
+  rankValue?: number
   fantasy?: FantasyInfo
   lastUpdated: string
 }
@@ -87,7 +86,11 @@ export interface TeamDefense {
   stats: PlayerStats
   grade: number
   gradeLabel: string
+  valueGrade?: number
+  valueLabel?: string
+  availability?: number
   rank: number
+  rankValue?: number
   fantasy?: FantasyInfo
   lastUpdated: string
 }
