@@ -4,24 +4,39 @@ import { useDataLake } from '../hooks/useDataLake'
 import type { Player, Position } from '../lib/types'
 
 const MAX = 5
+const STORAGE_KEY = 'compare-ids'
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K']
+
+function readInitialIds(searchParams: URLSearchParams): string[] {
+  const fromUrl = (searchParams.get('ids') || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (fromUrl.length) return fromUrl.slice(0, MAX)
+  try {
+    const stored = sessionStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored) as string[]
+      if (Array.isArray(parsed)) return parsed.slice(0, MAX)
+    }
+  } catch { /* ignore */ }
+  return []
+}
 
 export default function Compare() {
   const { data, loading, error } = useDataLake()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
-    const raw = searchParams.get('ids') || ''
-    return raw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, MAX)
-  })
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => readInitialIds(searchParams))
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState<Position | 'ALL'>('ALL')
 
-  // Keep URL in sync for shareable compares
   useEffect(() => {
     if (selectedIds.length) {
       setSearchParams({ ids: selectedIds.join(',') }, { replace: true })
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(selectedIds))
     } else {
       setSearchParams({}, { replace: true })
+      sessionStorage.removeItem(STORAGE_KEY)
     }
   }, [selectedIds, setSearchParams])
 
@@ -67,7 +82,6 @@ export default function Compare() {
 
   const week = data.meta.projectionWeek || data.meta.week
 
-  // Rows for comparison table
   const rows: { label: string; key: string; better?: 'high' | 'low'; format: (p: Player) => string }[] = [
     { label: 'Grade', key: 'grade', better: 'high', format: (p) => p.grade.toFixed(1) },
     { label: 'Label', key: 'label', format: (p) => p.gradeLabel },
@@ -143,7 +157,6 @@ export default function Compare() {
         Select up to {MAX} players · Full-PPR · Week {week}
       </p>
 
-      {/* Selected chips */}
       <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
         {selected.map((p) => (
           <button
@@ -161,7 +174,6 @@ export default function Compare() {
         )}
       </div>
 
-      {/* Search to add */}
       {selectedIds.length < MAX && (
         <div className="mb-6">
           <input
@@ -214,7 +226,6 @@ export default function Compare() {
         </div>
       )}
 
-      {/* Comparison table */}
       {selected.length >= 1 && (
         <div className="overflow-x-auto -mx-4 px-4">
           <table className="w-full text-sm border-collapse min-w-[320px]">
@@ -224,10 +235,7 @@ export default function Compare() {
                   Metric
                 </th>
                 {selected.map((p) => (
-                  <th
-                    key={p.id}
-                    className="text-center px-2 py-2 min-w-[4.5rem] align-bottom"
-                  >
+                  <th key={p.id} className="text-center px-2 py-2 min-w-[4.5rem] align-bottom">
                     <Link
                       to={`/player/${p.id}`}
                       className="block text-emerald-400 font-semibold leading-tight hover:underline"
@@ -243,7 +251,6 @@ export default function Compare() {
             </thead>
             <tbody>
               {rows.map((row) => {
-                // Hide position-irrelevant empty rows when all are blank
                 const values = selected.map((p) => row.format(p))
                 if (values.every((v) => v === '—' || v === '0')) return null
                 const best = bestIndex(row)
@@ -256,9 +263,7 @@ export default function Compare() {
                       <td
                         key={p.id}
                         className={`text-center px-2 py-2.5 tabular-nums ${
-                          best === i
-                            ? 'text-emerald-400 font-semibold'
-                            : 'text-slate-200'
+                          best === i ? 'text-emerald-400 font-semibold' : 'text-slate-200'
                         }`}
                       >
                         {row.format(p)}
@@ -275,7 +280,7 @@ export default function Compare() {
       {selected.length === 0 && (
         <div className="mt-8 text-center text-slate-500 text-sm">
           <p className="mb-2">Search above to add players</p>
-          <p className="text-xs">Tip: open a player and tap “Add to compare”</p>
+          <p className="text-xs">Tip: open a player and tap “+ Compare”</p>
         </div>
       )}
     </div>
