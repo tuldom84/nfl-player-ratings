@@ -28,6 +28,8 @@ export default function PlayerDetail() {
   const s = player.stats
   const f = player.fantasy
   const week = data?.meta.projectionWeek || data?.meta.week
+  const gamesPlayed = s.gamesPlayed || f?.gamesPlayed || f?.games
+  const teamGames = s.teamGamesPlayed || f?.teamGamesPlayed
 
   function addToCompare() {
     if (!id) return
@@ -73,7 +75,6 @@ export default function PlayerDetail() {
         </div>
       </div>
 
-      {/* Dual grades */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="bg-slate-900 rounded-xl p-3 border border-emerald-800/40">
           <div className="text-[10px] uppercase tracking-wide text-slate-500">Value grade</div>
@@ -95,11 +96,18 @@ export default function PlayerDetail() {
         </div>
       </div>
 
-      {player.availability != null && (
+      {(player.availability != null || gamesPlayed != null) && (
         <p className="text-xs text-slate-500 mb-4">
-          Availability {Math.round(player.availability * 100)}%
-          {f?.games != null ? ` (${f.games} games played)` : ''}
-          {' · '}Value uses PPG × availability × PPR pos weight
+          {gamesPlayed != null && (
+            <>
+              <span className="text-slate-300">{gamesPlayed}</span> games played
+              {teamGames != null ? ` / ${teamGames} team games` : ''}
+            </>
+          )}
+          {player.availability != null && (
+            <> · Availability {Math.round(player.availability * 100)}%</>
+          )}
+          {' · '}Averages use games played only (not games started)
         </p>
       )}
 
@@ -108,7 +116,9 @@ export default function PlayerDetail() {
           <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 text-center">
             <div className="text-[10px] uppercase tracking-wide text-slate-500">Avg PPG</div>
             <div className="text-xl font-bold text-sky-400 tabular-nums">{f.avgPts.toFixed(1)}</div>
-            <div className="text-[10px] text-slate-500">{f.games}g full-PPR</div>
+            <div className="text-[10px] text-slate-500">
+              {gamesPlayed ?? f.games} games played · full-PPR
+            </div>
           </div>
           <div className="bg-slate-900 rounded-xl p-3 border border-emerald-800/50 text-center">
             <div className="text-[10px] uppercase tracking-wide text-slate-500">
@@ -168,14 +178,18 @@ export default function PlayerDetail() {
         {s.targets != null && s.targets > 0 && <Stat label="Targets" value={s.targets} />}
         {s.fgMade != null && s.fgMade > 0 && <Stat label="FG Made" value={s.fgMade} />}
         {s.xpMade != null && s.xpMade > 0 && <Stat label="XP Made" value={s.xpMade} />}
-        {s.gamesPlayed != null && s.gamesPlayed > 0 && <Stat label="Games" value={s.gamesPlayed} />}
+        {gamesPlayed != null && gamesPlayed > 0 && (
+          <Stat label="Games played" value={gamesPlayed} />
+        )}
+        {teamGames != null && teamGames > 0 && (
+          <Stat label="Team games" value={teamGames} />
+        )}
       </div>
 
       <p className="mt-8 text-xs text-slate-500 leading-relaxed">
-        <strong className="text-slate-400">Value grade</strong> ranks everyone together using
-        full-PPR avg PPG × availability (GP/team games) × positional weight (RB/WR highest).
-        <strong className="text-slate-400"> Pos grade</strong> is only vs the same position.
-        Weekly projection still adjusts for opponent DST and injury.
+        PPG and grades divide by <strong className="text-slate-400">games played</strong>, never
+        games started. Availability = games played ÷ team games. Value grade = avg PPG ×
+        availability × PPR positional weight.
       </p>
     </div>
   )
