@@ -1,22 +1,21 @@
 import { useState, useEffect } from 'react'
 import type { DataLake, Player } from '../lib/types'
+import { applyValueGrades } from '../lib/valueGrade'
 
-const CACHE_KEY = 'nfl-ratings-datalake'
+const CACHE_KEY = 'nfl-ratings-datalake-v2'
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7 // 1 week
 
 async function fetchLake(base: string): Promise<DataLake> {
-  // Prefer single file
   try {
     const res = await fetch(`${base}data/latest.json`, { cache: 'default' })
     if (res.ok) {
       const payload = await res.json()
-      if (payload?.players?.length) return payload as DataLake
+      if (payload?.players?.length) return applyValueGrades(payload as DataLake)
     }
   } catch {
-    /* fall through to chunks */
+    /* fall through */
   }
 
-  // Chunked format: meta.json + players-0.json, players-1.json, ...
   const metaRes = await fetch(`${base}data/meta.json`, { cache: 'default' })
   if (!metaRes.ok) throw new Error(`Failed to load data lake (${metaRes.status})`)
   const metaFile = await metaRes.json()
@@ -28,11 +27,11 @@ async function fetchLake(base: string): Promise<DataLake> {
     const part = await r.json()
     players.push(...part)
   }
-  return {
+  return applyValueGrades({
     meta: metaFile.meta,
     players,
     defenses: metaFile.defenses || [],
-  }
+  })
 }
 
 export function useDataLake() {
@@ -53,7 +52,8 @@ export function useDataLake() {
           const parsed = JSON.parse(cached) as { ts: number; payload: DataLake }
           if (Date.now() - parsed.ts < CACHE_TTL_MS && parsed.payload?.players?.length) {
             if (!cancelled) {
-              setData(parsed.payload)
+              // Re-apply in case algorithm updated
+              setData(applyValueGrades(parsed.payload))
               setLoading(false)
             }
           }
@@ -71,10 +71,7 @@ export function useDataLake() {
         }
       } catch (e: any) {
         if (!cancelled) {
-          setError((prev) => {
-            // keep showing cache if we have data
-            return e.message || 'Unable to load player data'
-          })
+          setError(e.message || 'Unable to load player data')
         }
       } finally {
         if (!cancelled) setLoading(false)
