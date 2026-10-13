@@ -12,7 +12,6 @@ type RankRow = {
   name: string
   team: string
   position: string
-  /** Score shown as primary for current mode */
   displayGrade: number
   valueGrade: number
   posGrade: number
@@ -31,7 +30,7 @@ export default function Rankings() {
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('value')
 
-  // ALL defaults to cross-position value; position tabs default to pos grade
+  // ALL → value; position tabs (incl. DST) → pos grade
   useEffect(() => {
     setSortBy(pos === 'ALL' ? 'value' : 'pos')
   }, [pos])
@@ -47,7 +46,8 @@ export default function Rankings() {
         name: d.name,
         team: d.abbreviation || '',
         position: 'DST',
-        displayGrade: d.valueGrade ?? d.grade,
+        // Position-relative grade is primary for DST tab
+        displayGrade: d.grade,
         valueGrade: d.valueGrade ?? d.grade,
         posGrade: d.grade,
         avgPts: d.fantasy?.avgPts,
@@ -123,7 +123,6 @@ export default function Rankings() {
       if (sortBy === 'proj') return (b.projectedPts ?? 0) - (a.projectedPts ?? 0)
       if (sortBy === 'avg') return (b.avgPts ?? 0) - (a.avgPts ?? 0)
       if (sortBy === 'pos') return b.posGrade - a.posGrade
-      // value (cross-position)
       return b.valueGrade - a.valueGrade
     })
   }, [data, pos, query, sortBy])
@@ -139,7 +138,9 @@ export default function Rankings() {
       <p className="text-xs text-slate-500 mb-3">
         {pos === 'ALL'
           ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
-          : `${pos} = position-relative grade · also sortable by value / proj`}
+          : pos === 'DST'
+            ? 'DST = position-relative grade among defenses'
+            : `${pos} = position-relative grade · also sortable by value / proj`}
         {' · '}Week {week}
       </p>
 
@@ -203,21 +204,30 @@ export default function Rankings() {
                 ? `${p.homeAway === 'home' ? 'vs' : '@'} ${p.opponent}`
                 : ''
 
+          // On DST tab with default pos sort, always emphasize pos grade
+          const effectiveSort = pos === 'DST' && sortBy === 'value' ? 'pos' : sortBy
+
           const primary =
-            sortBy === 'proj'
+            effectiveSort === 'proj'
               ? p.projectedPts != null
                 ? p.projectedPts.toFixed(1)
                 : '—'
-              : sortBy === 'avg'
+              : effectiveSort === 'avg'
                 ? p.avgPts != null
                   ? p.avgPts.toFixed(1)
                   : '—'
-                : sortBy === 'pos'
+                : effectiveSort === 'pos' || pos === 'DST'
                   ? p.posGrade.toFixed(0)
                   : p.valueGrade.toFixed(0)
 
           const primaryUnit =
-            sortBy === 'proj' ? 'proj' : sortBy === 'avg' ? 'avg' : sortBy === 'pos' ? 'pos' : 'val'
+            effectiveSort === 'proj'
+              ? 'proj'
+              : effectiveSort === 'avg'
+                ? 'avg'
+                : effectiveSort === 'pos' || pos === 'DST'
+                  ? 'pos'
+                  : 'val'
 
           const inner = (
             <>
@@ -241,8 +251,11 @@ export default function Rankings() {
                   <span className="text-[10px] text-slate-500 font-normal"> {primaryUnit}</span>
                 </div>
                 <div className="text-[10px] text-slate-500 tabular-nums">
-                  {sortBy !== 'value' && <>{p.valueGrade.toFixed(0)} val · </>}
-                  {sortBy !== 'pos' && pos !== 'ALL' && <>{p.posGrade.toFixed(0)} pos · </>}
+                  {pos !== 'DST' && primaryUnit !== 'val' && <>{p.valueGrade.toFixed(0)} val · </>}
+                  {pos === 'DST' && primaryUnit !== 'pos' && <>{p.posGrade.toFixed(0)} pos · </>}
+                  {pos !== 'DST' && primaryUnit !== 'pos' && pos !== 'ALL' && (
+                    <>{p.posGrade.toFixed(0)} pos · </>
+                  )}
                   {p.avgPts != null ? `${p.avgPts.toFixed(1)} avg` : ''}
                 </div>
               </div>
