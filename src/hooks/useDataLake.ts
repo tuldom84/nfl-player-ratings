@@ -34,8 +34,10 @@ export function useDataLake() {
       }
 
       // 2. Fetch from static data lake (updated weekly on Tuesday)
+      // Use Vite BASE_URL so it works on GitHub Pages subpath
       try {
-        const res = await fetch('/data/latest.json', { cache: 'default' })
+        const base = import.meta.env.BASE_URL || '/'
+        const res = await fetch(`${base}data/latest.json`, { cache: 'default' })
         if (!res.ok) throw new Error(`Failed to load data lake (${res.status})`)
         const payload: DataLake = await res.json()
         if (!cancelled) {
