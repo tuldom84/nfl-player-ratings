@@ -15,7 +15,9 @@ function GradeBadge({ grade, label }: { grade: number; label: string }) {
   )
 }
 
-function PlayerCard({ player }: { player: Player }) {
+function PlayerCard({ player, useValue }: { player: Player; useValue?: boolean }) {
+  const grade = useValue ? (player.valueGrade ?? player.grade) : player.grade
+  const label = useValue ? (player.valueLabel ?? player.gradeLabel) : player.gradeLabel
   return (
     <Link
       to={`/player/${player.id}`}
@@ -26,14 +28,23 @@ function PlayerCard({ player }: { player: Player }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-slate-100 truncate">{player.name}</div>
-        <div className="text-xs text-slate-400">{player.team} · #{player.rankPos} {player.position}</div>
+        <div className="text-xs text-slate-400">
+          {player.team} · {player.position}
+          {useValue && player.rankOverall != null
+            ? ` · #${player.rankOverall} overall`
+            : player.rankPos != null
+              ? ` · #${player.rankPos} ${player.position}`
+              : ''}
+        </div>
       </div>
-      <GradeBadge grade={player.grade} label={player.gradeLabel} />
+      <GradeBadge grade={grade} label={label} />
     </Link>
   )
 }
 
 function DefenseCard({ defense }: { defense: TeamDefense }) {
+  const grade = defense.valueGrade ?? defense.grade
+  const label = defense.valueLabel ?? defense.gradeLabel
   return (
     <Link
       to={`/defense/${defense.id}`}
@@ -44,9 +55,9 @@ function DefenseCard({ defense }: { defense: TeamDefense }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-slate-100 truncate">{defense.name}</div>
-        <div className="text-xs text-slate-400">{defense.abbreviation} · #{defense.rank} DST</div>
+        <div className="text-xs text-slate-400">{defense.abbreviation} · DST</div>
       </div>
-      <GradeBadge grade={defense.grade} label={defense.gradeLabel} />
+      <GradeBadge grade={grade} label={label} />
     </Link>
   )
 }
@@ -73,17 +84,22 @@ export default function Home() {
     )
   }
 
-  const topOverall = [...data.players].sort((a, b) => b.grade - a.grade).slice(0, 15)
+  // Cross-position value ranking for Top Overall
+  const topOverall = [...data.players]
+    .sort((a, b) => (b.valueGrade ?? b.grade) - (a.valueGrade ?? a.grade))
+    .slice(0, 15)
   const topByPos = (pos: string) =>
     data.players.filter((p) => p.position === pos).sort((a, b) => b.grade - a.grade).slice(0, 5)
-  const topDst = [...(data.defenses || [])].sort((a, b) => b.grade - a.grade).slice(0, 5)
+  const topDst = [...(data.defenses || [])]
+    .sort((a, b) => (b.valueGrade ?? b.grade) - (a.valueGrade ?? a.grade))
+    .slice(0, 5)
 
   return (
     <div className="px-4 pt-4 pb-8 space-y-8">
       <header>
         <h1 className="text-2xl font-bold tracking-tight">NFL Player Ratings</h1>
         <p className="text-sm text-slate-400 mt-1">
-          PPR-weighted grades · Season {data.meta.season}
+          Full-PPR value grades · Season {data.meta.season}
           {data.meta.lastSync && (
             <> · Updated {new Date(data.meta.lastSync).toLocaleDateString()}</>
           )}
@@ -91,10 +107,13 @@ export default function Home() {
       </header>
 
       <section>
-        <h2 className="text-lg font-semibold mb-3 text-emerald-400">Top Overall</h2>
+        <h2 className="text-lg font-semibold mb-1 text-emerald-400">Top Overall value</h2>
+        <p className="text-xs text-slate-500 mb-3">
+          Cross-position: avg PPG × availability × PPR positional weight
+        </p>
         <div className="space-y-2">
           {topOverall.map((p) => (
-            <PlayerCard key={p.id} player={p} />
+            <PlayerCard key={p.id} player={p} useValue />
           ))}
         </div>
       </section>
