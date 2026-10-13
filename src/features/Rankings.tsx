@@ -1,18 +1,24 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Position } from '../lib/types'
 
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
+type SortKey = 'value' | 'pos' | 'proj' | 'avg'
+
 type RankRow = {
   id: string
   name: string
   team: string
   position: string
-  grade: number
+  /** Score shown as primary for current mode */
+  displayGrade: number
+  valueGrade: number
+  posGrade: number
   avgPts?: number
   projectedPts?: number
+  availability?: number
   opponent?: string
   homeAway?: string
   injuryStatus?: string
@@ -23,7 +29,12 @@ export default function Rankings() {
   const { data, loading, error } = useDataLake()
   const [pos, setPos] = useState<Position | 'ALL'>('ALL')
   const [query, setQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'grade' | 'proj' | 'avg'>('grade')
+  const [sortBy, setSortBy] = useState<SortKey>('value')
+
+  // ALL defaults to cross-position value; position tabs default to pos grade
+  useEffect(() => {
+    setSortBy(pos === 'ALL' ? 'value' : 'pos')
+  }, [pos])
 
   const filtered = useMemo(() => {
     if (!data) return [] as RankRow[]
@@ -36,9 +47,12 @@ export default function Rankings() {
         name: d.name,
         team: d.abbreviation || '',
         position: 'DST',
-        grade: d.grade,
+        displayGrade: d.valueGrade ?? d.grade,
+        valueGrade: d.valueGrade ?? d.grade,
+        posGrade: d.grade,
         avgPts: d.fantasy?.avgPts,
         projectedPts: d.fantasy?.projectedPts,
+        availability: d.availability,
         opponent: d.fantasy?.opponent,
         homeAway: d.fantasy?.homeAway,
         isDefense: true,
@@ -50,9 +64,12 @@ export default function Rankings() {
           name: p.name,
           team: p.team,
           position: p.position,
-          grade: p.grade,
+          displayGrade: p.valueGrade ?? p.grade,
+          valueGrade: p.valueGrade ?? p.grade,
+          posGrade: p.grade,
           avgPts: p.fantasy?.avgPts,
           projectedPts: p.fantasy?.projectedPts,
+          availability: p.availability,
           opponent: p.fantasy?.opponent,
           homeAway: p.fantasy?.homeAway,
           injuryStatus: p.fantasy?.injuryStatus,
@@ -62,9 +79,12 @@ export default function Rankings() {
           name: d.name,
           team: d.abbreviation || '',
           position: 'DST',
-          grade: d.grade,
+          displayGrade: d.valueGrade ?? d.grade,
+          valueGrade: d.valueGrade ?? d.grade,
+          posGrade: d.grade,
           avgPts: d.fantasy?.avgPts,
           projectedPts: d.fantasy?.projectedPts,
+          availability: d.availability,
           opponent: d.fantasy?.opponent,
           homeAway: d.fantasy?.homeAway,
           isDefense: true,
@@ -78,9 +98,12 @@ export default function Rankings() {
           name: p.name,
           team: p.team,
           position: p.position,
-          grade: p.grade,
+          displayGrade: p.grade,
+          valueGrade: p.valueGrade ?? p.grade,
+          posGrade: p.grade,
           avgPts: p.fantasy?.avgPts,
           projectedPts: p.fantasy?.projectedPts,
+          availability: p.availability,
           opponent: p.fantasy?.opponent,
           homeAway: p.fantasy?.homeAway,
           injuryStatus: p.fantasy?.injuryStatus,
@@ -99,7 +122,9 @@ export default function Rankings() {
     return [...list].sort((a, b) => {
       if (sortBy === 'proj') return (b.projectedPts ?? 0) - (a.projectedPts ?? 0)
       if (sortBy === 'avg') return (b.avgPts ?? 0) - (a.avgPts ?? 0)
-      return b.grade - a.grade
+      if (sortBy === 'pos') return b.posGrade - a.posGrade
+      // value (cross-position)
+      return b.valueGrade - a.valueGrade
     })
   }, [data, pos, query, sortBy])
 
@@ -112,7 +137,10 @@ export default function Rankings() {
     <div className="px-4 pt-4 pb-8">
       <h1 className="text-2xl font-bold mb-1">Rankings</h1>
       <p className="text-xs text-slate-500 mb-3">
-        Full-PPR · Week {week} projections vs opponent DST
+        {pos === 'ALL'
+          ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
+          : `${pos} = position-relative grade · also sortable by value / proj`}
+        {' · '}Week {week}
       </p>
 
       <input
@@ -137,22 +165,29 @@ export default function Rankings() {
         ))}
       </div>
 
-      <div className="flex gap-2 mb-3 text-xs">
-        {(['grade', 'proj', 'avg'] as const).map((s) => (
+      <div className="flex gap-2 mb-3 text-xs overflow-x-auto">
+        {(
+          [
+            { key: 'value' as const, label: 'Value' },
+            { key: 'pos' as const, label: 'Pos grade' },
+            { key: 'proj' as const, label: `Wk ${week}` },
+            { key: 'avg' as const, label: 'Avg PPG' },
+          ] as const
+        ).map((s) => (
           <button
-            key={s}
-            onClick={() => setSortBy(s)}
-            className={`px-3 py-1 rounded-full ${
-              sortBy === s ? 'bg-slate-700 text-white' : 'text-slate-500'
+            key={s.key}
+            onClick={() => setSortBy(s.key)}
+            className={`flex-shrink-0 px-3 py-1 rounded-full ${
+              sortBy === s.key ? 'bg-slate-700 text-white' : 'text-slate-500'
             }`}
           >
-            {s === 'grade' ? 'Grade' : s === 'proj' ? `Wk ${week} Proj` : 'Avg PPG'}
+            {s.label}
           </button>
         ))}
       </div>
 
       <p className="text-xs text-slate-500 mb-3">
-        {filtered.length} {pos === 'DST' ? 'defenses' : 'entries'}
+        {filtered.length} {pos === 'DST' ? 'defenses' : pos === 'ALL' ? 'players + DST' : 'players'}
       </p>
 
       <ul className="space-y-1">
@@ -168,6 +203,22 @@ export default function Rankings() {
                 ? `${p.homeAway === 'home' ? 'vs' : '@'} ${p.opponent}`
                 : ''
 
+          const primary =
+            sortBy === 'proj'
+              ? p.projectedPts != null
+                ? p.projectedPts.toFixed(1)
+                : '—'
+              : sortBy === 'avg'
+                ? p.avgPts != null
+                  ? p.avgPts.toFixed(1)
+                  : '—'
+                : sortBy === 'pos'
+                  ? p.posGrade.toFixed(0)
+                  : p.valueGrade.toFixed(0)
+
+          const primaryUnit =
+            sortBy === 'proj' ? 'proj' : sortBy === 'avg' ? 'avg' : sortBy === 'pos' ? 'pos' : 'val'
+
           const inner = (
             <>
               <span className="w-7 text-right text-sm text-slate-500 tabular-nums">{idx + 1}</span>
@@ -179,15 +230,20 @@ export default function Rankings() {
                 <div className="text-xs text-slate-400">
                   {p.isDefense ? 'Team Defense' : `${p.team} · ${p.position}`}
                   {matchup ? ` · ${matchup}` : ''}
+                  {p.availability != null && p.availability < 0.95 && (
+                    <span className="text-amber-500"> · {Math.round(p.availability * 100)}% avail</span>
+                  )}
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-emerald-400 font-semibold tabular-nums text-sm">
-                  {p.projectedPts != null ? p.projectedPts.toFixed(1) : '—'}
-                  <span className="text-[10px] text-slate-500 font-normal"> proj</span>
+                  {primary}
+                  <span className="text-[10px] text-slate-500 font-normal"> {primaryUnit}</span>
                 </div>
                 <div className="text-[10px] text-slate-500 tabular-nums">
-                  {p.avgPts != null ? `${p.avgPts.toFixed(1)} avg` : ''} · {p.grade.toFixed(0)}g
+                  {sortBy !== 'value' && <>{p.valueGrade.toFixed(0)} val · </>}
+                  {sortBy !== 'pos' && pos !== 'ALL' && <>{p.posGrade.toFixed(0)} pos · </>}
+                  {p.avgPts != null ? `${p.avgPts.toFixed(1)} avg` : ''}
                 </div>
               </div>
             </>
