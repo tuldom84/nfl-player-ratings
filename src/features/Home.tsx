@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Player, TeamDefense } from '../lib/types'
 
-function GradeBadge({ grade, label }: { grade: number; label: string }) {
+function GradeBadge({ grade, label, unit }: { grade: number; label: string; unit?: string }) {
   const cls =
     label === 'Elite' ? 'grade-elite' :
     label === 'Great' ? 'grade-great' :
@@ -10,7 +10,8 @@ function GradeBadge({ grade, label }: { grade: number; label: string }) {
     label === 'Average' ? 'grade-average' : 'grade-below'
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
-      {grade.toFixed(0)} · {label}
+      {grade.toFixed(0)}
+      {unit ? ` ${unit}` : ''} · {label}
     </span>
   )
 }
@@ -37,15 +38,16 @@ function PlayerCard({ player, useValue }: { player: Player; useValue?: boolean }
               : ''}
         </div>
       </div>
-      <GradeBadge grade={grade} label={label} />
+      <GradeBadge grade={grade} label={label} unit={useValue ? 'val' : 'pos'} />
     </Link>
   )
 }
 
 function DefenseCard({ defense }: { defense: TeamDefense }) {
-  // Position-relative grade among DST only
-  const grade = defense.grade
-  const label = defense.gradeLabel
+  // ALWAYS position-relative grade — never valueGrade
+  const posGrade = defense.grade
+  const posLabel = defense.gradeLabel
+  const posRank = defense.rank // preserved as position rank among DST
   return (
     <Link
       to={`/defense/${defense.id}`}
@@ -57,10 +59,10 @@ function DefenseCard({ defense }: { defense: TeamDefense }) {
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-slate-100 truncate">{defense.name}</div>
         <div className="text-xs text-slate-400">
-          {defense.abbreviation} · #{defense.rankValue ?? defense.rank} DST
+          {defense.abbreviation} · #{posRank} DST
         </div>
       </div>
-      <GradeBadge grade={grade} label={label} />
+      <GradeBadge grade={posGrade} label={posLabel} unit="pos" />
     </Link>
   )
 }
@@ -92,8 +94,10 @@ export default function Home() {
     .slice(0, 15)
   const topByPos = (pos: string) =>
     data.players.filter((p) => p.position === pos).sort((a, b) => b.grade - a.grade).slice(0, 5)
-  // Sort DST by position-relative grade
-  const topDst = [...(data.defenses || [])].sort((a, b) => b.grade - a.grade).slice(0, 5)
+  // Sort strictly by position-relative grade (defense.grade), never valueGrade
+  const topDst = [...(data.defenses || [])]
+    .sort((a, b) => b.grade - a.grade || a.abbreviation.localeCompare(b.abbreviation))
+    .slice(0, 5)
 
   return (
     <div className="px-4 pt-4 pb-8 space-y-8">
@@ -137,7 +141,9 @@ export default function Home() {
       {topDst.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold mb-1 text-amber-400">Top DST</h2>
-          <p className="text-xs text-slate-500 mb-3">Position grade among defenses</p>
+          <p className="text-xs text-slate-500 mb-3">
+            Position grade among defenses only (not overall value)
+          </p>
           <div className="space-y-2">
             {topDst.map((d) => (
               <DefenseCard key={d.id} defense={d} />
