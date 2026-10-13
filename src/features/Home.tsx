@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
-import type { Player } from '../lib/types'
+import type { Player, TeamDefense } from '../lib/types'
 
 function GradeBadge({ grade, label }: { grade: number; label: string }) {
   const cls =
@@ -33,6 +33,24 @@ function PlayerCard({ player }: { player: Player }) {
   )
 }
 
+function DefenseCard({ defense }: { defense: TeamDefense }) {
+  return (
+    <Link
+      to={`/defense/${defense.id}`}
+      className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/80 border border-slate-800 active:scale-[0.98] transition-transform"
+    >
+      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-400">
+        DST
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-slate-100 truncate">{defense.name}</div>
+        <div className="text-xs text-slate-400">{defense.abbreviation} · #{defense.rank} DST</div>
+      </div>
+      <GradeBadge grade={defense.grade} label={defense.gradeLabel} />
+    </Link>
+  )
+}
+
 export default function Home() {
   const { data, loading, error } = useDataLake()
 
@@ -58,6 +76,7 @@ export default function Home() {
   const topOverall = [...data.players].sort((a, b) => b.grade - a.grade).slice(0, 15)
   const topByPos = (pos: string) =>
     data.players.filter((p) => p.position === pos).sort((a, b) => b.grade - a.grade).slice(0, 5)
+  const topDst = [...(data.defenses || [])].sort((a, b) => b.grade - a.grade).slice(0, 5)
 
   return (
     <div className="px-4 pt-4 pb-8 space-y-8">
@@ -80,7 +99,7 @@ export default function Home() {
         </div>
       </section>
 
-      {(['QB', 'RB', 'WR', 'TE'] as const).map((pos) => {
+      {(['QB', 'RB', 'WR', 'TE', 'K'] as const).map((pos) => {
         const list = topByPos(pos)
         if (!list.length) return null
         return (
@@ -94,6 +113,17 @@ export default function Home() {
           </section>
         )
       })}
+
+      {topDst.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold mb-3 text-amber-400">Top DST</h2>
+          <div className="space-y-2">
+            {topDst.map((d) => (
+              <DefenseCard key={d.id} defense={d} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
