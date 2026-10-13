@@ -2,6 +2,8 @@
 
 Mobile-first Progressive Web App that rates NFL players for **PPR fantasy football** using current-season statistics.
 
+**🚀 Live demo:** [https://tuldom84.github.io/nfl-player-ratings/](https://tuldom84.github.io/nfl-player-ratings/)
+
 **Repo:** https://github.com/tuldom84/nfl-player-ratings
 
 ## Features
@@ -68,6 +70,15 @@ A GitHub Action (`.github/workflows/weekly-sync.yml`) runs every Tuesday at 10:0
 
 You can also trigger it manually from the Actions tab.
 
+## Live Demo (GitHub Pages)
+
+The app is automatically deployed to GitHub Pages on every push to `main` via `.github/workflows/deploy-pages.yml`.
+
+**URL:** https://tuldom84.github.io/nfl-player-ratings/
+
+> **Note:** You may need to enable GitHub Pages once in the repo settings:
+> Settings → Pages → Source → **GitHub Actions**.
+
 ## Project Structure
 
 ```
@@ -83,6 +94,7 @@ public/
   data/latest.json
 .github/workflows/
   weekly-sync.yml
+  deploy-pages.yml
 ```
 
 ## License
