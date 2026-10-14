@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,18 +30,37 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload artifact
+      - name: SPA fallback (404.html)
+        run: cp dist/index.html dist/404.html
+
+      - name: Verify build output
+        run: |
+          test -f dist/index.html
+          grep -q 'assets/' dist/index.html || (echo 'Build did not rewrite asset paths'; cat dist/index.html; exit 1)
+          ls -la dist/
+
+      # Primary: publish built app to gh-pages branch (Pages source = gh-pages / root)
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
+
+      # Also upload Actions artifact (if Pages source is set to GitHub Actions)
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
-  deploy:
-    needs: build
+  deploy-actions:
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages (Actions)
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true
