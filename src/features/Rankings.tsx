@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Position } from '../lib/types'
@@ -28,12 +28,8 @@ export default function Rankings() {
   const { data, loading, error } = useDataLake()
   const [pos, setPos] = useState<Position | 'ALL'>('ALL')
   const [query, setQuery] = useState('')
+  // Persist until the user changes it — do not reset on position tab switch
   const [sortBy, setSortBy] = useState<SortKey>('value')
-
-  // ALL → value; position tabs (incl. DST) → pos grade
-  useEffect(() => {
-    setSortBy(pos === 'ALL' ? 'value' : 'pos')
-  }, [pos])
 
   const filtered = useMemo(() => {
     if (!data) return [] as RankRow[]
@@ -46,7 +42,6 @@ export default function Rankings() {
         name: d.name,
         team: d.abbreviation || '',
         position: 'DST',
-        // Position-relative grade is primary for DST tab
         displayGrade: d.grade,
         valueGrade: d.valueGrade ?? d.grade,
         posGrade: d.grade,
@@ -139,8 +134,8 @@ export default function Rankings() {
         {pos === 'ALL'
           ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
           : pos === 'DST'
-            ? 'DST = position-relative grade among defenses'
-            : `${pos} = position-relative grade · also sortable by value / proj`}
+            ? 'DST ranked by selected sort · pos grade is relative among defenses'
+            : `${pos} ranked by selected sort · pos grade is relative among ${pos}s`}
         {' · '}Week {week}
       </p>
 
@@ -204,28 +199,25 @@ export default function Rankings() {
                 ? `${p.homeAway === 'home' ? 'vs' : '@'} ${p.opponent}`
                 : ''
 
-          // On DST tab with default pos sort, always emphasize pos grade
-          const effectiveSort = pos === 'DST' && sortBy === 'value' ? 'pos' : sortBy
-
           const primary =
-            effectiveSort === 'proj'
+            sortBy === 'proj'
               ? p.projectedPts != null
                 ? p.projectedPts.toFixed(1)
                 : '—'
-              : effectiveSort === 'avg'
+              : sortBy === 'avg'
                 ? p.avgPts != null
                   ? p.avgPts.toFixed(1)
                   : '—'
-                : effectiveSort === 'pos' || pos === 'DST'
+                : sortBy === 'pos'
                   ? p.posGrade.toFixed(0)
                   : p.valueGrade.toFixed(0)
 
           const primaryUnit =
-            effectiveSort === 'proj'
+            sortBy === 'proj'
               ? 'proj'
-              : effectiveSort === 'avg'
+              : sortBy === 'avg'
                 ? 'avg'
-                : effectiveSort === 'pos' || pos === 'DST'
+                : sortBy === 'pos'
                   ? 'pos'
                   : 'val'
 
@@ -251,11 +243,8 @@ export default function Rankings() {
                   <span className="text-[10px] text-slate-500 font-normal"> {primaryUnit}</span>
                 </div>
                 <div className="text-[10px] text-slate-500 tabular-nums">
-                  {pos !== 'DST' && primaryUnit !== 'val' && <>{p.valueGrade.toFixed(0)} val · </>}
-                  {pos === 'DST' && primaryUnit !== 'pos' && <>{p.posGrade.toFixed(0)} pos · </>}
-                  {pos !== 'DST' && primaryUnit !== 'pos' && pos !== 'ALL' && (
-                    <>{p.posGrade.toFixed(0)} pos · </>
-                  )}
+                  {primaryUnit !== 'val' && <>{p.valueGrade.toFixed(0)} val · </>}
+                  {primaryUnit !== 'pos' && <>{p.posGrade.toFixed(0)} pos · </>}
                   {p.avgPts != null ? `${p.avgPts.toFixed(1)} avg` : ''}
                 </div>
               </div>
