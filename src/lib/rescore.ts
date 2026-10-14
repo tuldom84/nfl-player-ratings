@@ -32,7 +32,6 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
       safe(stats.recTDs) * o.recTD
   } else if (pos === 'K') {
     const k = s.kicker
-    // Prefer distance buckets if present on stats (from sync); else flat FG made
     const st = stats as Record<string, number | undefined>
     const fg0 =
       safe(st.fgMade1_19) + safe(st.fgMade20_29) + safe(st.fgMade30_39)
@@ -51,7 +50,6 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
         fg50 * k.fg50_59 +
         fg60 * k.fg60
     } else {
-      // Fallback: all FGs as 0-39 value (conservative)
       const made = safe(stats.fgMade)
       let miss = 0
       if (safe(stats.fgAtt) > 0) miss = Math.max(0, safe(stats.fgAtt) - made)
@@ -73,7 +71,6 @@ function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   pts += safe((stats as Record<string, number>).kicksBlocked) * d.blockedKick
 
   const gp = Math.max(1, safe(stats.gamesPlayed) || 1)
-  // Approximate PA/YA brackets from season totals when per-game logs unavailable
   const avgPA = safe(stats.ptsAllowed) / gp
   const avgYA = safe(stats.yardsAllowed) / gp
   pts += bracketPts(d.pa, avgPA) * gp
@@ -117,6 +114,36 @@ function gradeByPosition<T extends { position: Position; avgPts: number }>(
   return out
 }
 
+/**
+ * If availability < 50%, divide positional grade by games missed.
+ * Example: team played 5, player played 2 → missed 3 → grade / 3.
+ * DST is never penalized (always plays team games).
+ */
+function applyAvailabilityPenalty(
+  grade: number,
+  gamesPlayed: number,
+  teamGamesPlayed: number
+): number {
+  const tgp = Math.max(teamGamesPlayed, 1)
+  const gp = Math.max(0, gamesPlayed)
+  const availability = gp / tgp
+  if (availability >= 0.5) return grade
+  const gamesMissed = Math.max(1, tgp - gp)
+  return Math.round((grade / gamesMissed) * 10) / 10
+}
+
+function resolveTeamGames(p: Player): number {
+  return Math.max(
+    1,
+    p.stats.teamGamesPlayed ||
+      p.fantasy?.teamGamesPlayed ||
+      p.stats.gamesPlayed ||
+      p.fantasy?.gamesPlayed ||
+      p.fantasy?.games ||
+      1
+  )
+}
+
 /** Recompute fantasy points, grades, and value grades from raw stats + settings. */
 export function applyScoringSettings(lake: DataLake, settings: ScoringSettings): DataLake {
   const players: Player[] = lake.players.map((p) => {
@@ -130,7 +157,6 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     const homeAway = p.fantasy?.homeAway
     let projectedPts = Math.round(avgPts * mult * 10) / 10
     if (homeAway === 'bye') projectedPts = 0
-    // Re-apply injury factor if Out/Doubtful etc. — approximate from prior ratio
     const inj = p.fantasy?.injuryStatus
     if (inj === 'Out' || inj === 'Injured Reserve' || inj === 'Suspension') projectedPts = 0
     else if (inj === 'Doubtful') projectedPts = Math.round(projectedPts * 0.4 * 10) / 10
@@ -186,7 +212,7 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     }
   })
 
-  // Position grades from new avgPts
+  // Position grades from new avgPts, then availability penalty
   const gradedPlayers = gradeByPosition(
     players.map((p) => ({
       id: p.id,
@@ -197,7 +223,12 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
   const gradeMap = new Map(gradedPlayers.map((g) => [g.id, g]))
   const playersWithGrade = players.map((p) => {
     const g = gradeMap.get(p.id)
-    return g ? { ...p, grade: g.grade, gradeLabel: g.gradeLabel } : p
+    if (!g) return p
+    const gamesPlayed =
+      p.stats.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1
+    const teamGames = resolveTeamGames(p)
+    const grade = applyAvailabilityPenalty(g.grade, gamesPlayed, teamGames)
+    return { ...p, grade, gradeLabel: gradeLabel(grade) }
   })
 
   const dstAvgs = defenses.map((d) => ({
@@ -207,6 +238,7 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
   }))
   const gradedDst = gradeByPosition(dstAvgs)
   const dstGradeMap = new Map(gradedDst.map((g) => [g.id, g]))
+  // DST: no availability penalty (they play every team game)
   let defensesWithGrade = defenses.map((d) => {
     const g = dstGradeMap.get(d.id)
     return g ? { ...d, grade: g.grade, gradeLabel: g.gradeLabel } : d
@@ -215,7 +247,7 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     .sort((a, b) => b.grade - a.grade)
     .map((d, i) => ({ ...d, rank: i + 1 }))
 
-  // Rank pos within position for players
+  // Rank pos within position for players (after penalty)
   const byPos = new Map<Position, Player[]>()
   for (const p of playersWithGrade) {
     const list = byPos.get(p.position) || []
