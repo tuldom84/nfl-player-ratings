@@ -15,12 +15,12 @@ export default function About() {
           4 pass TD, −2 INT).
         </li>
         <li>
-          <strong>Kicker:</strong> XP 1; FG miss −1; FG 0–39: 3, 40–49: 4, 50–59: 5, 60+: 6.
+          <strong>Kicker:</strong> XP made 1; FG miss −1; FG 0–39: 3, 40–49: 4, 50–59: 5,
+          60+: 6.
         </li>
         <li>
-          <strong>DST:</strong> points-allowed & yards-allowed brackets per game, plus INT 2,
-          FR 2, FF 1, safety 2, def/return TD 6, blocked kick 2. (Sacks not scored in this
-          league.)
+          <strong>DST:</strong> points-allowed & yards-allowed brackets per game, plus sack 1,
+          INT 2, FR 2, FF 1, safety 2, def/return TD 6, blocked kick 2.
         </li>
       </ul>
 
