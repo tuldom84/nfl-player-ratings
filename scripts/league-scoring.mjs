@@ -7,7 +7,7 @@ export const OFF = { passYd: 0.04, passTD: 4, int: -2, rushYd: 0.1, rushTD: 6, r
 /** Kicker: XP 1; FG miss -1; 0-39:3, 40-49:4, 50-59:5, 60+:6 */
 export const K_SCORE = { xpMade: 1, fgMiss: -1, fg0_39: 3, fg40_49: 4, fg50_59: 5, fg60: 6 }
 
-/** DST: PA/YA brackets per game + turnovers/returns (no sack pts in this league) */
+/** DST: PA/YA brackets per game + turnovers/returns + 1 pt/sack */
 export const DST_SCORE = {
   pa: [
     { max: 0, pts: 5 },
@@ -29,6 +29,7 @@ export const DST_SCORE = {
     { max: 549, pts: -4 },
     { max: Infinity, pts: -5 },
   ],
+  sack: 1,
   int: 2,
   fumRec: 2,
   fumForced: 1,
@@ -71,6 +72,7 @@ export function scoreKicker(stats, safe) {
 export function scoreDstSeason(stats, safe) {
   const s = safe || ((v) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0))
   let pts = 0
+  pts += s(stats.sacks) * DST_SCORE.sack
   pts += s(stats.ints) * DST_SCORE.int
   pts += s(stats.fumblesRec) * DST_SCORE.fumRec
   pts += s(stats.fumblesForced) * DST_SCORE.fumForced
