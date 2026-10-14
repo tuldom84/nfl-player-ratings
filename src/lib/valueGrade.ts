@@ -3,7 +3,7 @@
  *
  * Combines:
  *  1. Scoring output — season average PPR points per game (using games played)
- *  2. Availability — gamesPlayed / teamGamesPlayed (not games started)
+ *  2. Availability — gamesPlayed / teamGamesPlayed (not games started, not week #)
  *  3. Positional value — PPR scarcity weights by position
  *
  * Never overwrites position-relative `grade` / `gradeLabel` / DST `rank`.
@@ -36,33 +36,56 @@ function normalize(values: number[]): number[] {
   return values.map((v) => ((v - min) / range) * 100)
 }
 
-function resolveTeamGames(lake: DataLake, player: {
-  fantasy?: { games?: number; teamGamesPlayed?: number; gamesPlayed?: number }
-  stats: { gamesPlayed?: number; teamGamesPlayed?: number }
-}): number {
+/** League-wide estimate of how many team games have been played so far. */
+function leagueTeamGamesPlayed(lake: DataLake): number {
+  const fromPlayers = lake.players
+    .map((p) => p.stats.teamGamesPlayed || p.fantasy?.teamGamesPlayed || 0)
+    .filter((n) => n > 0)
+  const fromDst = lake.defenses
+    .map((d) => d.stats.gamesPlayed || d.fantasy?.gamesPlayed || d.fantasy?.games || 0)
+    .filter((n) => n > 0)
+  const all = [...fromPlayers, ...fromDst]
+  if (!all.length) return 1
+  // Mode / median-ish: most common completed team-game count (not week number)
+  return Math.max(...all, 1)
+}
+
+function resolveTeamGames(
+  lake: DataLake,
+  player: {
+    position?: Position
+    fantasy?: { games?: number; teamGamesPlayed?: number; gamesPlayed?: number }
+    stats: { gamesPlayed?: number; teamGamesPlayed?: number }
+  },
+  leagueTgp: number
+): number {
   const explicit =
     player.fantasy?.teamGamesPlayed ||
     player.stats.teamGamesPlayed ||
     0
   if (explicit > 0) return explicit
 
-  const week = lake.meta.week || 0
+  // DST always plays every team game — GP is the team game count
+  if (player.position === 'DST') {
+    const gp =
+      player.stats.gamesPlayed ||
+      player.fantasy?.gamesPlayed ||
+      player.fantasy?.games ||
+      0
+    return Math.max(gp, leagueTgp, 1)
+  }
+
+  // Fallback: league-wide completed team games (never use NFL week # — week can be ahead of played games)
   const gp =
+    player.stats.gamesPlayed ||
     player.fantasy?.gamesPlayed ||
     player.fantasy?.games ||
-    player.stats.gamesPlayed ||
     0
-  const maxGp = Math.max(
-    gp,
-    ...lake.players.map(
-      (p) => p.fantasy?.gamesPlayed || p.fantasy?.games || p.stats.gamesPlayed || 0
-    ),
-    week
-  )
-  return Math.max(maxGp, 1)
+  return Math.max(gp, leagueTgp, 1)
 }
 
 function resolveGamesPlayed(player: {
+  position?: Position
   fantasy?: { games?: number; gamesPlayed?: number }
   stats: { gamesPlayed?: number }
 }): number {
@@ -80,6 +103,11 @@ export function computeValueRaw(
   teamGames: number,
   position: Position
 ): { valueRaw: number; availability: number } {
+  // DST / team defense: always fully "available" for season value (they play every team game)
+  if (position === 'DST') {
+    const posW = PPR_POSITION_VALUE.DST
+    return { valueRaw: avgPts * posW, availability: 1 }
+  }
   const availability = Math.min(1, Math.max(0, gamesPlayed / Math.max(teamGames, 1)))
   const posW = PPR_POSITION_VALUE[position] ?? 1
   const valueRaw = avgPts * availability * posW
@@ -97,26 +125,51 @@ export function applyValueGrades(lake: DataLake): DataLake {
     availability: number
   }
 
+  const leagueTgp = leagueTeamGamesPlayed(lake)
   const rows: Row[] = []
 
   lake.players.forEach((p, index) => {
     const games = resolveGamesPlayed(p)
     const avgPts = p.fantasy?.avgPts ?? 0
-    const teamGames = resolveTeamGames(lake, p)
-    const { valueRaw, availability } = computeValueRaw(avgPts, games, teamGames, p.position)
-    rows.push({ kind: 'player', index, position: p.position, avgPts, games, valueRaw, availability })
+    const teamGames = resolveTeamGames(lake, p, leagueTgp)
+    const { valueRaw, availability } = computeValueRaw(
+      avgPts,
+      games,
+      teamGames,
+      p.position
+    )
+    rows.push({
+      kind: 'player',
+      index,
+      position: p.position,
+      avgPts,
+      games,
+      valueRaw,
+      availability,
+    })
   })
 
   lake.defenses.forEach((d, index) => {
-    const games = resolveGamesPlayed({ fantasy: d.fantasy, stats: d.stats })
+    const games = resolveGamesPlayed({ fantasy: d.fantasy, stats: d.stats, position: 'DST' })
     const avgPts = d.fantasy?.avgPts ?? 0
-    const teamGames = resolveTeamGames(lake, { fantasy: d.fantasy, stats: d.stats })
+    const teamGames = resolveTeamGames(
+      lake,
+      { fantasy: d.fantasy, stats: d.stats, position: 'DST' },
+      leagueTgp
+    )
     const { valueRaw, availability } = computeValueRaw(avgPts, games, teamGames, 'DST')
-    rows.push({ kind: 'dst', index, position: 'DST', avgPts, games, valueRaw, availability })
+    rows.push({
+      kind: 'dst',
+      index,
+      position: 'DST',
+      avgPts,
+      games,
+      valueRaw,
+      availability,
+    })
   })
 
   const norms = normalize(rows.map((r) => r.valueRaw))
-  // Shallow copy — never mutate grade / gradeLabel / rank from the data lake
   const players = lake.players.map((p) => ({ ...p }))
   const defenses = lake.defenses.map((d) => ({ ...d }))
 
@@ -136,12 +189,10 @@ export function applyValueGrades(lake: DataLake): DataLake {
         valueGrade,
         valueLabel,
         availability: Math.round(r.availability * 1000) / 1000,
-        // Keep original position-relative rank from sync (do not overwrite `rank`)
       }
     }
   })
 
-  // rankValue = rank by cross-position value (players only)
   const rankedPlayers = [...players].sort((a, b) => (b.valueGrade ?? 0) - (a.valueGrade ?? 0))
   rankedPlayers.forEach((p, i) => {
     const target = players.find((x) => x.id === p.id)
@@ -151,13 +202,11 @@ export function applyValueGrades(lake: DataLake): DataLake {
     }
   })
 
-  // DST rankValue = rank by position grade (among defenses), not overall value
   const rankedDefByPos = [...defenses].sort((a, b) => b.grade - a.grade)
   rankedDefByPos.forEach((d, i) => {
     const target = defenses.find((x) => x.id === d.id)
     if (target) {
       target.rankValue = i + 1
-      // Ensure rank stays position-based
       target.rank = i + 1
     }
   })
