@@ -161,6 +161,10 @@ function parseStats(overview) {
   stats.fgAtt = map.fieldGoalAttempts || 0
   stats.xpMade = map.extraPointsMade || 0
   stats.sacks = map.sacks || 0
+  stats.fumblesLost = 0
+  if (map.fumblesLost != null) stats.fumblesLost = map.fumblesLost
+  else if (map.losingFumbles != null) stats.fumblesLost = map.losingFumbles
+  else if (map.fumbles != null) stats.fumblesLost = map.fumbles
   return stats
 }
 
@@ -192,6 +196,9 @@ async function fetchGamesPlayed(id) {
         if (name === 'gamesplayed') gamesPlayed = val
         if (name === 'teamgamesplayed' || abbr === 'tgp') teamGamesPlayed = val
         if (name === 'gamesstarted' || abbr === 'gs') gamesStarted = val
+        if (name === 'fumbleslost' || abbr === 'fuml' || name === 'losingfumbles')
+          kick.fumblesLost = val
+        if (name === 'fumbles' && kick.fumblesLost == null) kick.fumblesLost = val
         if (catName === 'kicking' || catName === 'scoring') {
           if (name === 'extrapointsmade' || abbr === 'xpm') kick.xpMade = val
           if (name === 'fieldgoalsmade' || abbr === 'fgm') kick.fgMade = val
@@ -250,6 +257,7 @@ async function profile(id) {
   stats.gamesPlayed = gp.gamesPlayed || 0
   stats.teamGamesPlayed = gp.teamGamesPlayed || 0
   stats.gamesStarted = gp.gamesStarted || 0
+  if (gp.kick?.fumblesLost != null) stats.fumblesLost = gp.kick.fumblesLost
   if (pos === 'K' && gp.kick) Object.assign(stats, gp.kick)
   const fantasyMeta = parseFantasyMeta(overview)
   const team = a.team?.abbreviation || a.teamShortName || 'FA'
@@ -506,7 +514,6 @@ async function main() {
   const board = await fetchJson(
     'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'
   )
-  // ESPN's current week is the active fantasy week (Wed–Tue). Do NOT +1.
   const currentWeek = board.week?.number || 6
   const projectionWeek = currentWeek
   console.log('Current week', currentWeek, 'projection week', projectionWeek)
@@ -539,113 +546,83 @@ async function main() {
     if ((i + 1) % 25 === 0) console.log(' ', i + 1, '/', ids.length)
   }
 
-  let graded = gradeAll(players)
-  graded = [...graded].sort((a, b) => b.grade - a.grade)
-  graded.forEach((p, i) => {
-    p.rankOverall = i + 1
-  })
-  const byPos = new Map()
-  for (const p of graded) {
-    const l = byPos.get(p.position) || []
-    l.push(p)
-    byPos.set(p.position, l)
-  }
-  for (const [, l] of byPos) {
-    l.sort((a, b) => b.grade - a.grade)
-    l.forEach((p, i) => {
-      p.rankPos = i + 1
-    })
-  }
-
-  const teamsData = await fetchJson(
-    'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams?limit=32'
+  const teams = await fetchJson(
+    'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams'
   )
-  const teams = teamsData?.sports?.[0]?.leagues?.[0]?.teams || []
   const defenses = []
-  for (const t of teams) {
-    const team = t.team || t
-    const id = String(team.id)
-    const abbr = team.abbreviation || ''
-    console.log('DST', abbr)
-    const stats = await teamDefStats(id, abbr)
-    defenses.push({
-      id,
-      name: team.displayName || team.name,
-      abbreviation: abbr,
-      stats,
-      grade: 50,
-      gradeLabel: 'Average',
-      rank: 0,
-      lastUpdated: new Date().toISOString(),
-      position: 'DST',
-    })
+  for (const item of teams.sports?.[0]?.leagues?.[0]?.teams || []) {
+    const t = item.team
+    if (!t?.id) continue
+    try {
+      const fullStats = await teamDefStats(t.id, t.abbreviation)
+      defenses.push({
+        id: String(t.id),
+        name: t.displayName || t.name,
+        abbreviation: t.abbreviation,
+        stats: fullStats,
+        grade: 0,
+        gradeLabel: 'Average',
+        rank: 0,
+        lastUpdated: new Date().toISOString(),
+      })
+    } catch (e) {
+      console.warn('DST skip', t.abbreviation, e.message)
+    }
     await new Promise((r) => setTimeout(r, 40))
   }
 
-  let gDef = gradeByPos(defenses)
-  gDef.sort((a, b) => b.grade - a.grade)
-  gDef = gDef.map((d, i) => {
-    const fullStats = d.stats
-    const seasonPts = seasonPPR(fullStats, 'DST')
-    const games = Math.max(1, safe(fullStats.gamesPlayed) || 4)
-    const avgPts = Math.round((seasonPts / games) * 10) / 10
-    const mu = matchups[d.abbreviation]
-    let projectedPts = avgPts
-    let matchupNote = 'Team defense'
-    if (mu?.homeAway === 'bye') {
-      projectedPts = 0
-      matchupNote = 'BYE week'
-    } else if (mu?.opponent) {
-      matchupNote = `${mu.homeAway === 'home' ? 'vs' : '@'} ${mu.opponent}`
-    }
-    return {
-      id: d.id,
-      name: d.name,
-      abbreviation: d.abbreviation,
-      stats: {
-        sacks: fullStats.sacks,
-        ints: fullStats.ints,
-        fumblesRec: fullStats.fumblesRec,
-        fumblesForced: fullStats.fumblesForced,
-        safeties: fullStats.safeties,
-        defTDs: fullStats.defTDs,
-        kicksBlocked: fullStats.kicksBlocked,
-        ptsAllowed: fullStats.ptsAllowed,
-        yardsAllowed: fullStats.yardsAllowed,
-        gamesPlayed: fullStats.gamesPlayed,
-        gameLogCount: (fullStats.gameLogs || []).length,
-      },
-      grade: d.grade,
-      gradeLabel: d.gradeLabel,
-      rank: i + 1,
-      lastUpdated: d.lastUpdated,
+  const dstGraded = gradeByPos(
+    defenses.map((d) => ({
+      ...d,
       position: 'DST',
-      fantasy: {
-        seasonPts,
-        avgPts,
-        games,
-        gamesPlayed: games,
-        projectedPts: Math.round(projectedPts * 10) / 10,
-        opponent: mu?.opponent,
-        homeAway: mu?.homeAway,
-        matchupNote,
-        injuryStatus: 'Active',
-        projectionWeek,
-      },
-    }
+      stats: d.stats,
+    }))
+  ).map((d, i) => {
+    const { position, ...rest } = d
+    return { ...rest, rank: i + 1 }
+  })
+  dstGraded.sort((a, b) => b.grade - a.grade)
+  dstGraded.forEach((d, i) => {
+    d.rank = i + 1
   })
 
   const dstByAbbr = {}
-  for (const d of gDef) dstByAbbr[d.abbreviation] = d
+  for (const d of dstGraded) dstByAbbr[d.abbreviation] = d
 
+  let graded = gradeAll(players)
   graded = graded.map((p) => attachFantasy(p, matchups, dstByAbbr, injuries, projectionWeek))
+
+  for (const d of dstGraded) {
+    const seasonPts = seasonPPR(d.stats, 'DST')
+    const games = Math.max(1, d.stats.gamesPlayed || 1)
+    const avgPts = Math.round((seasonPts / games) * 10) / 10
+    const mu = matchups[d.abbreviation]
+    let projectedPts = avgPts
+    if (mu?.homeAway === 'bye') projectedPts = 0
+    d.fantasy = {
+      seasonPts,
+      avgPts,
+      games,
+      gamesPlayed: games,
+      projectedPts,
+      opponent: mu?.opponent,
+      homeAway: mu?.homeAway,
+      matchupNote:
+        mu?.homeAway === 'bye'
+          ? 'BYE week'
+          : mu?.opponent
+            ? `${mu.homeAway === 'home' ? 'vs' : '@'} ${mu.opponent}`
+            : undefined,
+      projectionWeek,
+    }
+  }
 
   const now = new Date()
   const next = new Date(now)
-  next.setDate(now.getDate() + ((2 - now.getDay() + 7) % 7 || 7))
-  next.setHours(10, 0, 0, 0)
+  next.setUTCDate(next.getUTCDate() + ((2 + 7 - next.getUTCDay()) % 7 || 7))
+  next.setUTCHours(14, 0, 0, 0)
 
-  const lake = {
+  const payload = {
     meta: {
       lastSync: now.toISOString(),
       nextSync: next.toISOString(),
@@ -655,20 +632,14 @@ async function main() {
       source:
         'ESPN + league K/DST scoring (PA/YA brackets, FG distance, 1pt sack, XP 1) + full-PPR offense',
       playerCount: graded.length,
-      dstCount: gDef.length,
+      dstCount: dstGraded.length,
     },
     players: graded,
-    defenses: gDef,
+    defenses: dstGraded,
   }
-  writeFileSync(join(DATA_DIR, 'latest.json'), JSON.stringify(lake))
-  console.log('Wrote', graded.length, 'players,', gDef.length, 'DST, week', currentWeek)
-  gDef.slice(0, 5).forEach((d) =>
-    console.log('DST', d.abbreviation, 'grade', d.grade, 'avg', d.fantasy.avgPts, 'PA', d.stats.ptsAllowed)
-  )
-  graded
-    .filter((p) => p.position === 'K')
-    .slice(0, 3)
-    .forEach((p) => console.log('K', p.name, 'avg', p.fantasy.avgPts))
+
+  writeFileSync(join(DATA_DIR, 'latest.json'), JSON.stringify(payload))
+  console.log('Wrote latest.json', graded.length, 'players', dstGraded.length, 'DST')
 }
 
 main().catch((e) => {
