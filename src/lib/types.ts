@@ -38,6 +38,16 @@ export interface PlayerStats {
   /** Games started — informational only; not used in averages */
   gamesStarted?: number
   fantasyPts?: number
+  fumblesLost?: number
+  fumblesForced?: number
+  safeties?: number
+  fgMade1_19?: number
+  fgMade20_29?: number
+  fgMade30_39?: number
+  fgMade40_49?: number
+  fgMade50_59?: number
+  fgMade60?: number
+  fgMissed?: number
 }
 
 export interface FantasyInfo {
@@ -75,6 +85,9 @@ export interface Player {
   gradeLabel: string
   valueGrade?: number
   valueLabel?: string
+  /** Real Position Score — real football value at position (0–100) */
+  rps?: number
+  rpsLabel?: string
   /** gamesPlayed / teamGamesPlayed (0–1) */
   availability?: number
   rankOverall?: number
@@ -93,6 +106,8 @@ export interface TeamDefense {
   gradeLabel: string
   valueGrade?: number
   valueLabel?: string
+  rps?: number
+  rpsLabel?: string
   availability?: number
   rank: number
   rankValue?: number

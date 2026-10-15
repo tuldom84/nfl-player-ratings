@@ -5,7 +5,7 @@ import type { Position } from '../lib/types'
 
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
-type SortKey = 'value' | 'pos' | 'proj' | 'avg'
+type SortKey = 'value' | 'pos' | 'rps' | 'proj' | 'avg'
 
 type RankRow = {
   id: string
@@ -15,6 +15,7 @@ type RankRow = {
   displayGrade: number
   valueGrade: number
   posGrade: number
+  rps: number
   avgPts?: number
   projectedPts?: number
   availability?: number
@@ -28,7 +29,6 @@ export default function Rankings() {
   const { data, loading, error } = useDataLake()
   const [pos, setPos] = useState<Position | 'ALL'>('ALL')
   const [query, setQuery] = useState('')
-  // Persist until the user changes it — do not reset on position tab switch
   const [sortBy, setSortBy] = useState<SortKey>('value')
 
   const filtered = useMemo(() => {
@@ -45,6 +45,7 @@ export default function Rankings() {
         displayGrade: d.grade,
         valueGrade: d.valueGrade ?? d.grade,
         posGrade: d.grade,
+        rps: d.rps ?? d.grade,
         avgPts: d.fantasy?.avgPts,
         projectedPts: d.fantasy?.projectedPts,
         availability: d.availability,
@@ -62,6 +63,7 @@ export default function Rankings() {
           displayGrade: p.valueGrade ?? p.grade,
           valueGrade: p.valueGrade ?? p.grade,
           posGrade: p.grade,
+          rps: p.rps ?? p.grade,
           avgPts: p.fantasy?.avgPts,
           projectedPts: p.fantasy?.projectedPts,
           availability: p.availability,
@@ -77,6 +79,7 @@ export default function Rankings() {
           displayGrade: d.valueGrade ?? d.grade,
           valueGrade: d.valueGrade ?? d.grade,
           posGrade: d.grade,
+          rps: d.rps ?? d.grade,
           avgPts: d.fantasy?.avgPts,
           projectedPts: d.fantasy?.projectedPts,
           availability: d.availability,
@@ -96,6 +99,7 @@ export default function Rankings() {
           displayGrade: p.grade,
           valueGrade: p.valueGrade ?? p.grade,
           posGrade: p.grade,
+          rps: p.rps ?? p.grade,
           avgPts: p.fantasy?.avgPts,
           projectedPts: p.fantasy?.projectedPts,
           availability: p.availability,
@@ -118,6 +122,7 @@ export default function Rankings() {
       if (sortBy === 'proj') return (b.projectedPts ?? 0) - (a.projectedPts ?? 0)
       if (sortBy === 'avg') return (b.avgPts ?? 0) - (a.avgPts ?? 0)
       if (sortBy === 'pos') return b.posGrade - a.posGrade
+      if (sortBy === 'rps') return b.rps - a.rps
       return b.valueGrade - a.valueGrade
     })
   }, [data, pos, query, sortBy])
@@ -131,11 +136,13 @@ export default function Rankings() {
     <div className="px-4 pt-4 pb-8">
       <h1 className="text-2xl font-bold mb-1">Rankings</h1>
       <p className="text-xs text-slate-500 mb-3">
-        {pos === 'ALL'
-          ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
-          : pos === 'DST'
-            ? 'DST ranked by selected sort · pos grade is relative among defenses'
-            : `${pos} ranked by selected sort · pos grade is relative among ${pos}s`}
+        {sortBy === 'rps'
+          ? 'RPS = real football value at position (not fantasy)'
+          : pos === 'ALL'
+            ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
+            : pos === 'DST'
+              ? 'DST ranked by selected sort'
+              : `${pos} ranked by selected sort`}
         {' · '}Week {week}
       </p>
 
@@ -166,6 +173,7 @@ export default function Rankings() {
           [
             { key: 'value' as const, label: 'Value' },
             { key: 'pos' as const, label: 'Pos grade' },
+            { key: 'rps' as const, label: 'RPS' },
             { key: 'proj' as const, label: `Wk ${week}` },
             { key: 'avg' as const, label: 'Avg PPG' },
           ] as const
@@ -210,7 +218,9 @@ export default function Rankings() {
                   : '—'
                 : sortBy === 'pos'
                   ? p.posGrade.toFixed(0)
-                  : p.valueGrade.toFixed(0)
+                  : sortBy === 'rps'
+                    ? p.rps.toFixed(0)
+                    : p.valueGrade.toFixed(0)
 
           const primaryUnit =
             sortBy === 'proj'
@@ -219,7 +229,9 @@ export default function Rankings() {
                 ? 'avg'
                 : sortBy === 'pos'
                   ? 'pos'
-                  : 'val'
+                  : sortBy === 'rps'
+                    ? 'rps'
+                    : 'val'
 
           const inner = (
             <>
@@ -245,6 +257,7 @@ export default function Rankings() {
                 <div className="text-[10px] text-slate-500 tabular-nums">
                   {primaryUnit !== 'val' && <>{p.valueGrade.toFixed(0)} val · </>}
                   {primaryUnit !== 'pos' && <>{p.posGrade.toFixed(0)} pos · </>}
+                  {primaryUnit !== 'rps' && <>{p.rps.toFixed(0)} rps · </>}
                   {p.avgPts != null ? `${p.avgPts.toFixed(1)} avg` : ''}
                 </div>
               </div>

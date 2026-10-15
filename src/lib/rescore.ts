@@ -3,6 +3,7 @@
 import type { DataLake, Player, TeamDefense, Position } from './types'
 import type { ScoringSettings, BracketRow } from './scoringSettings'
 import { applyValueGrades } from './valueGrade'
+import { applyRps } from './rps'
 
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 
@@ -115,9 +116,7 @@ function gradeByPosition<T extends { position: Position; avgPts: number }>(
 }
 
 /**
- * If availability < 50%, divide positional grade by games missed.
- * Example: team played 5, player played 2 → missed 3 → grade / 3.
- * DST is never penalized (always plays team games).
+ * Fantasy pos-grade penalty: if availability < 50%, divide by games missed.
  */
 function applyAvailabilityPenalty(
   grade: number,
@@ -144,7 +143,7 @@ function resolveTeamGames(p: Player): number {
   )
 }
 
-/** Recompute fantasy points, grades, and value grades from raw stats + settings. */
+/** Recompute fantasy points, grades, RPS, and value grades from raw stats + settings. */
 export function applyScoringSettings(lake: DataLake, settings: ScoringSettings): DataLake {
   const players: Player[] = lake.players.map((p) => {
     const seasonPts = scorePlayer(p.stats, p.position, settings)
@@ -212,7 +211,6 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     }
   })
 
-  // Position grades from new avgPts, then availability penalty
   const gradedPlayers = gradeByPosition(
     players.map((p) => ({
       id: p.id,
@@ -238,7 +236,6 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
   }))
   const gradedDst = gradeByPosition(dstAvgs)
   const dstGradeMap = new Map(gradedDst.map((g) => [g.id, g]))
-  // DST: no availability penalty (they play every team game)
   let defensesWithGrade = defenses.map((d) => {
     const g = dstGradeMap.get(d.id)
     return g ? { ...d, grade: g.grade, gradeLabel: g.gradeLabel } : d
@@ -247,7 +244,6 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     .sort((a, b) => b.grade - a.grade)
     .map((d, i) => ({ ...d, rank: i + 1 }))
 
-  // Rank pos within position for players (after penalty)
   const byPos = new Map<Position, Player[]>()
   for (const p of playersWithGrade) {
     const list = byPos.get(p.position) || []
@@ -262,9 +258,11 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     })
   }
 
-  return applyValueGrades({
+  // Fantasy value grades, then real-football RPS (independent of scoring settings)
+  const withValue = applyValueGrades({
     ...lake,
     players: rankedPlayers,
     defenses: defensesWithGrade,
   })
+  return applyRps(withValue)
 }
