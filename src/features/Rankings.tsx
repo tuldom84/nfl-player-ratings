@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Position } from '../lib/types'
 
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST']
+const FILTERS_KEY = 'rankings-filters-v1'
 
 type SortKey = 'value' | 'pos' | 'rps' | 'proj' | 'avg'
 
@@ -25,11 +26,51 @@ type RankRow = {
   isDefense?: boolean
 }
 
+type SavedFilters = {
+  pos: Position | 'ALL'
+  sortBy: SortKey
+  query: string
+}
+
+const SORT_KEYS: SortKey[] = ['value', 'pos', 'rps', 'proj', 'avg']
+
+function loadFilters(): SavedFilters {
+  try {
+    const raw = sessionStorage.getItem(FILTERS_KEY)
+    if (!raw) return { pos: 'ALL', sortBy: 'value', query: '' }
+    const parsed = JSON.parse(raw) as SavedFilters
+    const pos = POSITIONS.includes(parsed.pos) ? parsed.pos : 'ALL'
+    const sortBy = SORT_KEYS.includes(parsed.sortBy) ? parsed.sortBy : 'value'
+    const query = typeof parsed.query === 'string' ? parsed.query : ''
+    return { pos, sortBy, query }
+  } catch {
+    return { pos: 'ALL', sortBy: 'value', query: '' }
+  }
+}
+
+function saveFilters(f: SavedFilters) {
+  try {
+    sessionStorage.setItem(FILTERS_KEY, JSON.stringify(f))
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export default function Rankings() {
   const { data, loading, error } = useDataLake()
-  const [pos, setPos] = useState<Position | 'ALL'>('ALL')
-  const [query, setQuery] = useState('')
-  const [sortBy, setSortBy] = useState<SortKey>('value')
+  const initial = loadFilters()
+  const [pos, setPosState] = useState<Position | 'ALL'>(initial.pos)
+  const [query, setQueryState] = useState(initial.query)
+  const [sortBy, setSortByState] = useState<SortKey>(initial.sortBy)
+
+  // Keep sessionStorage in sync whenever filters change
+  useEffect(() => {
+    saveFilters({ pos, sortBy, query })
+  }, [pos, sortBy, query])
+
+  const setPos = useCallback((p: Position | 'ALL') => setPosState(p), [])
+  const setSortBy = useCallback((s: SortKey) => setSortByState(s), [])
+  const setQuery = useCallback((q: string) => setQueryState(q), [])
 
   const filtered = useMemo(() => {
     if (!data) return [] as RankRow[]
