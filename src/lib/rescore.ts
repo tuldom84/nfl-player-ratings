@@ -4,6 +4,7 @@ import type { DataLake, Player, TeamDefense, Position } from './types'
 import type { ScoringSettings, BracketRow } from './scoringSettings'
 import { applyValueGrades } from './valueGrade'
 import { applyRps } from './rps'
+import { applyOffenseRps } from './offenseRps'
 
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 
@@ -115,9 +116,6 @@ function gradeByPosition<T extends { position: Position; avgPts: number }>(
   return out
 }
 
-/**
- * Fantasy pos-grade penalty: if availability < 50%, divide by games missed.
- */
 function applyAvailabilityPenalty(
   grade: number,
   gamesPlayed: number,
@@ -143,7 +141,7 @@ function resolveTeamGames(p: Player): number {
   )
 }
 
-/** Recompute fantasy points, grades, RPS, and value grades from raw stats + settings. */
+/** Recompute fantasy points, grades, RPS, offense RPS, and value grades. */
 export function applyScoringSettings(lake: DataLake, settings: ScoringSettings): DataLake {
   const players: Player[] = lake.players.map((p) => {
     const seasonPts = scorePlayer(p.stats, p.position, settings)
@@ -258,11 +256,11 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     })
   }
 
-  // Fantasy value grades, then real-football RPS (independent of scoring settings)
   const withValue = applyValueGrades({
     ...lake,
     players: rankedPlayers,
     defenses: defensesWithGrade,
   })
-  return applyRps(withValue)
+  const withPlayerRps = applyRps(withValue)
+  return applyOffenseRps(withPlayerRps)
 }
