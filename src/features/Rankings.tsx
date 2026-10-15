@@ -3,7 +3,17 @@ import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Position } from '../lib/types'
 
-const POSITIONS: (Position | 'ALL' | 'OFF')[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DST', 'OFF']
+const POSITIONS: (Position | 'ALL' | 'OFF' | 'POWER')[] = [
+  'ALL',
+  'QB',
+  'RB',
+  'WR',
+  'TE',
+  'K',
+  'DST',
+  'OFF',
+  'POWER',
+]
 const FILTERS_KEY = 'rankings-filters-v1'
 
 type SortKey = 'value' | 'pos' | 'rps' | 'proj' | 'avg'
@@ -24,10 +34,12 @@ type RankRow = {
   homeAway?: string
   injuryStatus?: string
   isDefense?: boolean
+  offRps?: number
+  defRps?: number
 }
 
 type SavedFilters = {
-  pos: Position | 'ALL' | 'OFF'
+  pos: Position | 'ALL' | 'OFF' | 'POWER'
   sortBy: SortKey
   query: string
 }
@@ -59,7 +71,7 @@ function saveFilters(f: SavedFilters) {
 export default function Rankings() {
   const { data, loading, error } = useDataLake()
   const initial = loadFilters()
-  const [pos, setPosState] = useState<Position | 'ALL' | 'OFF'>(initial.pos)
+  const [pos, setPosState] = useState<Position | 'ALL' | 'OFF' | 'POWER'>(initial.pos)
   const [query, setQueryState] = useState(initial.query)
   const [sortBy, setSortByState] = useState<SortKey>(initial.sortBy)
 
@@ -67,7 +79,7 @@ export default function Rankings() {
     saveFilters({ pos, sortBy, query })
   }, [pos, sortBy, query])
 
-  const setPos = useCallback((p: Position | 'ALL' | 'OFF') => setPosState(p), [])
+  const setPos = useCallback((p: Position | 'ALL' | 'OFF' | 'POWER') => setPosState(p), [])
   const setSortBy = useCallback((s: SortKey) => setSortByState(s), [])
   const setQuery = useCallback((q: string) => setQueryState(q), [])
 
@@ -76,7 +88,32 @@ export default function Rankings() {
 
     let list: RankRow[] = []
 
-    if (pos === 'OFF') {
+    if (pos === 'POWER') {
+      const offs = data.teamOffenses || []
+      const defs = data.defenses || []
+      const defById = new Map(defs.map((d) => [d.id, d]))
+      list = offs.map((o) => {
+        const d = defById.get(o.id)
+        const defRps = d?.rps ?? d?.grade ?? 0
+        const power = Math.round(((o.rps + defRps) / 2) * 10) / 10
+        return {
+          id: o.id,
+          name: o.name,
+          team: o.abbreviation || '',
+          position: 'POWER',
+          displayGrade: power,
+          valueGrade: power,
+          posGrade: power,
+          rps: power,
+          avgPts: o.stats?.pointsPerGame,
+          projectedPts: undefined,
+          availability: 1,
+          isDefense: false,
+          offRps: o.rps,
+          defRps,
+        }
+      })
+    } else if (pos === 'OFF') {
       list = (data.teamOffenses || []).map((o) => ({
         id: o.id,
         name: o.name,
@@ -167,9 +204,7 @@ export default function Rankings() {
     if (query.trim()) {
       const q = query.toLowerCase()
       list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.team.toLowerCase().includes(q)
+        (p) => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q)
       )
     }
 
@@ -191,15 +226,17 @@ export default function Rankings() {
     <div className="px-4 pt-4 pb-8">
       <h1 className="text-2xl font-bold mb-1">Rankings</h1>
       <p className="text-xs text-slate-500 mb-3">
-        {pos === 'OFF'
-          ? 'OFF = team offense RPS (PPG, YPG, TDs, turnovers — not fantasy)'
-          : sortBy === 'rps'
-            ? 'RPS = real football value at position (not fantasy)'
-            : pos === 'ALL'
-              ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
-              : pos === 'DST'
-                ? 'DST ranked by selected sort'
-                : `${pos} ranked by selected sort`}
+        {pos === 'POWER'
+          ? 'POWER = (offense RPS + defense RPS) ÷ 2 — real football team strength'
+          : pos === 'OFF'
+            ? 'OFF = team offense RPS (PPG, YPG, TDs, turnovers — not fantasy)'
+            : sortBy === 'rps'
+              ? 'RPS = real football value at position (not fantasy)'
+              : pos === 'ALL'
+                ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
+                : pos === 'DST'
+                  ? 'DST ranked by selected sort'
+                  : `${pos} ranked by selected sort`}
         {' · '}Week {week}
       </p>
 
@@ -253,9 +290,11 @@ export default function Rankings() {
           ? 'defenses'
           : pos === 'OFF'
             ? 'team offenses'
-            : pos === 'ALL'
-              ? 'players + DST'
-              : 'players'}
+            : pos === 'POWER'
+              ? 'teams'
+              : pos === 'ALL'
+                ? 'players + DST'
+                : 'players'}
       </p>
 
       <ul className="space-y-1">
@@ -306,11 +345,13 @@ export default function Rankings() {
                   {inj}
                 </div>
                 <div className="text-xs text-slate-400">
-                  {p.position === 'OFF'
-                    ? 'Team Offense'
-                    : p.isDefense
-                      ? 'Team Defense'
-                      : `${p.team} · ${p.position}`}
+                  {p.position === 'POWER'
+                    ? `OFF ${p.offRps?.toFixed(0) ?? '—'} · DEF ${p.defRps?.toFixed(0) ?? '—'}`
+                    : p.position === 'OFF'
+                      ? 'Team Offense'
+                      : p.isDefense
+                        ? 'Team Defense'
+                        : `${p.team} · ${p.position}`}
                   {matchup ? ` · ${matchup}` : ''}
                   {p.availability != null && p.availability < 0.95 && (
                     <span className="text-amber-500">
@@ -337,8 +378,20 @@ export default function Rankings() {
 
           return (
             <li key={`${p.position}-${p.id}`}>
-              {p.position === 'OFF' ? (
-                <div className="flex items-center gap-3 py-3 px-2 rounded-lg">{inner}</div>
+              {p.position === 'POWER' ? (
+                <Link
+                  to={`/team/${p.id}`}
+                  className="flex items-center gap-3 py-3 px-2 rounded-lg active:bg-slate-900"
+                >
+                  {inner}
+                </Link>
+              ) : p.position === 'OFF' ? (
+                <Link
+                  to={`/offense/${p.id}`}
+                  className="flex items-center gap-3 py-3 px-2 rounded-lg active:bg-slate-900"
+                >
+                  {inner}
+                </Link>
               ) : p.isDefense ? (
                 <Link
                   to={`/defense/${p.id}`}
