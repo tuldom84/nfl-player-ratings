@@ -4,6 +4,8 @@ import Rankings from './features/Rankings'
 import Compare from './features/Compare'
 import PlayerDetail from './features/PlayerDetail'
 import DefenseDetail from './features/DefenseDetail'
+import OffenseDetail from './features/OffenseDetail'
+import TeamDetail from './features/TeamDetail'
 import About from './features/About'
 import Settings from './features/Settings'
 
@@ -22,6 +24,8 @@ export default function App() {
           <Route path="/compare" element={<Compare />} />
           <Route path="/player/:id" element={<PlayerDetail />} />
           <Route path="/defense/:id" element={<DefenseDetail />} />
+          <Route path="/offense/:id" element={<OffenseDetail />} />
+          <Route path="/team/:id" element={<TeamDetail />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/about" element={<About />} />
         </Routes>
