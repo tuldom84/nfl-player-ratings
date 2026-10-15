@@ -1,6 +1,6 @@
 /**
  * Weekly ESPN data lake sync.
- * Offense: full-PPR. K/DST: league settings (FG distance, PA/YA brackets, 1 pt/sack, XP 1).
+ * Offense: full-PPR. K/DST: league settings. Team OFF RPS for DST matchups.
  */
 import { writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
@@ -295,6 +295,22 @@ async function teamDefStats(teamId, abbreviation) {
     gamesPlayed: 0,
     gameLogs: [],
   }
+  const offense = {
+    gamesPlayed: 0,
+    pointsPerGame: 0,
+    yardsPerGame: 0,
+    passYardsPerGame: 0,
+    rushYardsPerGame: 0,
+    totalYards: 0,
+    totalPoints: 0,
+    totalTDs: 0,
+    interceptions: 0,
+    fumblesLost: 0,
+    passTDs: 0,
+    rushTDs: 0,
+    qbRating: 0,
+    sacksAllowed: 0,
+  }
   try {
     const data = await fetchJson(
       `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${SEASON}/types/2/teams/${teamId}/statistics`
@@ -326,13 +342,44 @@ async function teamDefStats(teamId, abbreviation) {
           if (name === 'fumblesforced' || abbr === 'ff') stats.fumblesForced = val
           if (name === 'defensivefumblestouchdowns' || name === 'fumblestouchdowns')
             stats.defTDs += val
-          if (name === 'gamesplayed') stats.gamesPlayed = val
+          if (name === 'gamesplayed') {
+            stats.gamesPlayed = val
+            offense.gamesPlayed = val
+          }
+          if (name === 'fumbleslost' || abbr === 'lst') offense.fumblesLost = val
         }
         if (n === 'returning') {
           if (name === 'kickoffreturntouchdowns' || name === 'puntreturntouchdowns')
             stats.defTDs += val
         }
+        if (n === 'passing') {
+          if (name === 'passingyardspergame') offense.passYardsPerGame = val
+          if (name === 'passingtouchdowns') offense.passTDs = val
+          if (name === 'interceptions' || abbr === 'int') offense.interceptions = val
+          if (name === 'qbrating' || abbr === 'rtg') offense.qbRating = val
+          if (name === 'sacks' || abbr === 'sack') offense.sacksAllowed = val
+          if (name === 'netyardspergame') offense.yardsPerGame = val || offense.yardsPerGame
+        }
+        if (n === 'rushing') {
+          if (name === 'rushingyardspergame') offense.rushYardsPerGame = val
+          if (name === 'rushingtouchdowns') offense.rushTDs = val
+          if (name === 'totalpointspergame') offense.pointsPerGame = val
+          if (name === 'totalyards') offense.totalYards = val
+          if (name === 'totaltouchdowns') offense.totalTDs = val
+          if (name === 'netyardspergame') offense.yardsPerGame = val || offense.yardsPerGame
+          if (name === 'teamgamesplayed') offense.gamesPlayed = val || offense.gamesPlayed
+        }
+        if (n === 'scoring') {
+          if (name === 'totalpointspergame') offense.pointsPerGame = val
+          if (name === 'totalpoints') offense.totalPoints = val
+          if (name === 'passingtouchdowns') offense.passTDs = val
+          if (name === 'rushingtouchdowns') offense.rushTDs = val
+        }
       }
+    }
+    if (!offense.yardsPerGame) {
+      offense.yardsPerGame =
+        (offense.passYardsPerGame || 0) + (offense.rushYardsPerGame || 0)
     }
   } catch {}
 
@@ -380,10 +427,10 @@ async function teamDefStats(teamId, abbreviation) {
   } catch (e) {
     console.warn('schedule', teamId, e.message)
   }
-  return stats
+  if (!offense.gamesPlayed && stats.gamesPlayed) offense.gamesPlayed = stats.gamesPlayed
+  return { stats, offense }
 }
 
-/** Upcoming + in-progress matchups for a week (not only completed games). */
 async function loadMatchups(week) {
   const data = await fetchJson(
     `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${week}&seasontype=2&dates=${SEASON}`
@@ -507,8 +554,30 @@ function attachFantasy(player, matchups, dstByAbbr, injuries, projectionWeek) {
   return player
 }
 
+function rawOffenseRps(o) {
+  const g = Math.max(1, o.gamesPlayed || 1)
+  const ppg = o.pointsPerGame || (o.totalPoints ? o.totalPoints / g : 0)
+  const ypg = o.yardsPerGame || 0
+  const passYpg = o.passYardsPerGame || 0
+  const rushYpg = o.rushYardsPerGame || 0
+  const tdPg = ((o.totalTDs || 0) || (o.passTDs || 0) + (o.rushTDs || 0)) / g
+  const toPg = ((o.interceptions || 0) + (o.fumblesLost || 0)) / g
+  const rating = o.qbRating || 0
+  const sackPg = (o.sacksAllowed || 0) / g
+  return (
+    ppg * 3.2 +
+    ypg * 0.12 +
+    passYpg * 0.05 +
+    rushYpg * 0.08 +
+    tdPg * 14 +
+    rating * 0.15 +
+    toPg * -18 +
+    sackPg * -4
+  )
+}
+
 async function main() {
-  console.log('ESPN sync', SEASON, '(league K/DST scoring)')
+  console.log('ESPN sync', SEASON, '(league K/DST scoring + team OFF RPS)')
   mkdirSync(DATA_DIR, { recursive: true })
 
   const board = await fetchJson(
@@ -550,11 +619,12 @@ async function main() {
     'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams'
   )
   const defenses = []
+  const teamOffenses = []
   for (const item of teams.sports?.[0]?.leagues?.[0]?.teams || []) {
     const t = item.team
     if (!t?.id) continue
     try {
-      const fullStats = await teamDefStats(t.id, t.abbreviation)
+      const { stats: fullStats, offense: offStats } = await teamDefStats(t.id, t.abbreviation)
       defenses.push({
         id: String(t.id),
         name: t.displayName || t.name,
@@ -565,11 +635,39 @@ async function main() {
         rank: 0,
         lastUpdated: new Date().toISOString(),
       })
+      teamOffenses.push({
+        id: String(t.id),
+        name: t.displayName || t.name,
+        abbreviation: t.abbreviation,
+        stats: offStats,
+        rps: 0,
+        rpsLabel: 'Average',
+        rank: 0,
+        lastUpdated: new Date().toISOString(),
+      })
     } catch (e) {
       console.warn('DST skip', t.abbreviation, e.message)
     }
     await new Promise((r) => setTimeout(r, 40))
   }
+
+  const offRaws = teamOffenses.map((o) => rawOffenseRps(o.stats || {}))
+  if (offRaws.length) {
+    const mn = Math.min(...offRaws)
+    const mx = Math.max(...offRaws)
+    const range = mx - mn || 1
+    teamOffenses.forEach((o, i) => {
+      o.rps = Math.round(((offRaws[i] - mn) / range) * 1000) / 10
+      o.rpsLabel = gradeLabel(o.rps)
+    })
+    teamOffenses.sort((a, b) => b.rps - a.rps)
+    teamOffenses.forEach((o, i) => {
+      o.rank = i + 1
+    })
+  }
+  const offenseByAbbr = {}
+  for (const o of teamOffenses) offenseByAbbr[o.abbreviation] = o
+  console.log('Team offenses', teamOffenses.length)
 
   const dstGraded = gradeByPos(
     defenses.map((d) => ({
@@ -577,9 +675,9 @@ async function main() {
       position: 'DST',
       stats: d.stats,
     }))
-  ).map((d, i) => {
+  ).map((d) => {
     const { position, ...rest } = d
-    return { ...rest, rank: i + 1 }
+    return { ...rest, rank: 0 }
   })
   dstGraded.sort((a, b) => b.grade - a.grade)
   dstGraded.forEach((d, i) => {
@@ -598,7 +696,31 @@ async function main() {
     const avgPts = Math.round((seasonPts / games) * 10) / 10
     const mu = matchups[d.abbreviation]
     let projectedPts = avgPts
-    if (mu?.homeAway === 'bye') projectedPts = 0
+    let oppOffenseRps
+    let matchupMultiplier = 1
+    let matchupNote =
+      mu?.homeAway === 'bye'
+        ? 'BYE week'
+        : mu?.opponent
+          ? `${mu.homeAway === 'home' ? 'vs' : '@'} ${mu.opponent}`
+          : undefined
+    if (mu?.homeAway === 'bye' || mu?.opponent === 'BYE') {
+      projectedPts = 0
+      matchupMultiplier = 0
+      matchupNote = 'BYE week'
+    } else if (mu?.opponent && offenseByAbbr[mu.opponent]) {
+      const off = offenseByAbbr[mu.opponent]
+      oppOffenseRps = off.rps
+      matchupMultiplier = Math.round((1.18 - (oppOffenseRps / 100) * 0.36) * 1000) / 1000
+      projectedPts = Math.round(avgPts * matchupMultiplier * 10) / 10
+      const label = off.rpsLabel
+      matchupNote =
+        matchupMultiplier < 0.95
+          ? `Tough vs ${mu.opponent} OFF (${label}, RPS ${oppOffenseRps})`
+          : matchupMultiplier > 1.05
+            ? `Favorable vs ${mu.opponent} OFF (${label}, RPS ${oppOffenseRps})`
+            : `Neutral vs ${mu.opponent} OFF (RPS ${oppOffenseRps})`
+    }
     d.fantasy = {
       seasonPts,
       avgPts,
@@ -607,12 +729,9 @@ async function main() {
       projectedPts,
       opponent: mu?.opponent,
       homeAway: mu?.homeAway,
-      matchupNote:
-        mu?.homeAway === 'bye'
-          ? 'BYE week'
-          : mu?.opponent
-            ? `${mu.homeAway === 'home' ? 'vs' : '@'} ${mu.opponent}`
-            : undefined,
+      matchupNote,
+      matchupMultiplier,
+      oppOffenseRps,
       projectionWeek,
     }
   }
@@ -630,16 +749,18 @@ async function main() {
       week: currentWeek,
       projectionWeek,
       source:
-        'ESPN + league K/DST scoring (PA/YA brackets, FG distance, 1pt sack, XP 1) + full-PPR offense',
+        'ESPN + team OFF RPS + league K/DST scoring + full-PPR offense',
       playerCount: graded.length,
       dstCount: dstGraded.length,
+      offenseCount: teamOffenses.length,
     },
     players: graded,
     defenses: dstGraded,
+    teamOffenses,
   }
 
   writeFileSync(join(DATA_DIR, 'latest.json'), JSON.stringify(payload))
-  console.log('Wrote latest.json', graded.length, 'players', dstGraded.length, 'DST')
+  console.log('Wrote latest.json', graded.length, 'players', dstGraded.length, 'DST', teamOffenses.length, 'OFF')
 }
 
 main().catch((e) => {
