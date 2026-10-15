@@ -31,11 +31,8 @@ export interface PlayerStats {
   defTDs?: number
   ptsAllowed?: number
   yardsAllowed?: number
-  /** True games played (not games started) */
   gamesPlayed?: number
-  /** Team's games in the season so far */
   teamGamesPlayed?: number
-  /** Games started — informational only; not used in averages */
   gamesStarted?: number
   fantasyPts?: number
   fumblesLost?: number
@@ -50,10 +47,26 @@ export interface PlayerStats {
   fgMissed?: number
 }
 
+export interface OffenseStats {
+  gamesPlayed?: number
+  pointsPerGame?: number
+  yardsPerGame?: number
+  passYardsPerGame?: number
+  rushYardsPerGame?: number
+  totalYards?: number
+  totalPoints?: number
+  totalTDs?: number
+  interceptions?: number
+  fumblesLost?: number
+  passTDs?: number
+  rushTDs?: number
+  qbRating?: number
+  sacksAllowed?: number
+}
+
 export interface FantasyInfo {
   seasonPts: number
   avgPts: number
-  /** Alias for gamesPlayed used in averages */
   games: number
   gamesPlayed?: number
   teamGamesPlayed?: number
@@ -61,6 +74,8 @@ export interface FantasyInfo {
   opponent?: string
   homeAway?: 'home' | 'away' | 'bye'
   oppDstGrade?: number
+  /** Opponent team offense RPS (for DST matchups) */
+  oppOffenseRps?: number
   matchupMultiplier?: number
   matchupNote?: string
   injuryStatus?: InjuryStatus
@@ -85,10 +100,8 @@ export interface Player {
   gradeLabel: string
   valueGrade?: number
   valueLabel?: string
-  /** Real Position Score — real football value at position (0–100) */
   rps?: number
   rpsLabel?: string
-  /** gamesPlayed / teamGamesPlayed (0–1) */
   availability?: number
   rankOverall?: number
   rankPos?: number
@@ -115,6 +128,18 @@ export interface TeamDefense {
   lastUpdated: string
 }
 
+/** Real football team offense value (RPS only — not fantasy). */
+export interface TeamOffense {
+  id: string
+  name: string
+  abbreviation: string
+  stats: OffenseStats
+  rps: number
+  rpsLabel: string
+  rank: number
+  lastUpdated: string
+}
+
 export interface DataMeta {
   lastSync: string
   nextSync: string
@@ -124,10 +149,12 @@ export interface DataMeta {
   source: string
   playerCount: number
   dstCount: number
+  offenseCount?: number
 }
 
 export interface DataLake {
   meta: DataMeta
   players: Player[]
   defenses: TeamDefense[]
+  teamOffenses?: TeamOffense[]
 }
