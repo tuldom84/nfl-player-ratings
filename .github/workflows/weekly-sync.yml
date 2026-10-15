@@ -32,4 +32,5 @@ jobs:
             git commit -m "chore: weekly ESPN data lake sync $(date -u +%Y-%m-%d)"
             git pull --rebase origin main || true
             git push origin HEAD:main
+            echo "Pushed data lake — Deploy to GitHub Pages should run on this push"
           fi
