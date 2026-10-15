@@ -1,44 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { DataLake, Player } from '../lib/types'
-import { applyValueGrades } from '../lib/valueGrade'
 import { loadScoringSettings, SCORING_CHANGE_EVENT } from '../lib/scoringSettings'
 import { applyScoringSettings } from '../lib/rescore'
 
-const CACHE_KEY = 'nfl-ratings-datalake-v3'
+const CACHE_KEY = 'nfl-ratings-datalake-v4'
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7 // 1 week
 
 function withScoring(lake: DataLake): DataLake {
   const settings = loadScoringSettings()
   return applyScoringSettings(lake, settings)
-}
-
-async function fetchLake(base: string): Promise<DataLake> {
-  try {
-    const res = await fetch(`${base}data/latest.json`, { cache: 'no-cache' })
-    if (res.ok) {
-      const payload = await res.json()
-      if (payload?.players?.length) return withScoring(payload as DataLake)
-    }
-  } catch {
-    /* fall through */
-  }
-
-  const metaRes = await fetch(`${base}data/meta.json`, { cache: 'no-cache' })
-  if (!metaRes.ok) throw new Error(`Failed to load data lake (${metaRes.status})`)
-  const metaFile = await metaRes.json()
-  const chunkCount = metaFile.playerChunks || 0
-  const players: Player[] = []
-  for (let i = 0; i < chunkCount; i++) {
-    const r = await fetch(`${base}data/players-${i}.json`, { cache: 'no-cache' })
-    if (!r.ok) throw new Error(`Failed to load players chunk ${i}`)
-    const part = await r.json()
-    players.push(...part)
-  }
-  return withScoring({
-    meta: metaFile.meta,
-    players,
-    defenses: metaFile.defenses || [],
-  })
 }
 
 export function useDataLake() {
@@ -63,7 +33,11 @@ export function useDataLake() {
         const cached = localStorage.getItem(CACHE_KEY)
         if (cached) {
           const parsed = JSON.parse(cached) as { ts: number; payload: DataLake }
-          if (Date.now() - parsed.ts < CACHE_TTL_MS && parsed.payload?.players?.length) {
+          if (
+            Date.now() - parsed.ts < CACHE_TTL_MS &&
+            parsed.payload?.players?.length &&
+            (parsed.payload.teamOffenses?.length || 0) > 0
+          ) {
             if (!cancelled) {
               apply(parsed.payload)
               setLoading(false)
@@ -76,7 +50,6 @@ export function useDataLake() {
 
       try {
         const base = import.meta.env.BASE_URL || '/'
-        // Fetch without scoring so we cache raw ESPN-based lake
         const res = await fetch(`${base}data/latest.json`, { cache: 'no-cache' })
         if (!res.ok) throw new Error(`Failed to load data (${res.status})`)
         const payload = (await res.json()) as DataLake
@@ -101,7 +74,6 @@ export function useDataLake() {
     }
   }, [apply])
 
-  // Re-apply scoring when settings are saved
   useEffect(() => {
     function onChange() {
       if (raw) setData(withScoring(raw))
