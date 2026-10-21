@@ -1,28 +1,36 @@
+import { useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
+import { RankSummary } from '../components/RankSummary'
+import { withStatRanks, rankByField, type StatRowDef } from '../lib/statRanks'
 
 function pg(total: number | undefined, games: number): number | undefined {
   if (total == null) return undefined
   return Math.round((total / Math.max(games, 1)) * 10) / 10
 }
 
-type Row = { label: string; season: number | string; perGame?: number | string }
-
-function StatTable({ rows, games }: { rows: Row[]; games: number }) {
+function StatTable({
+  rows,
+  games,
+}: {
+  rows: (StatRowDef & { rank?: number; of?: number })[]
+  games: number
+}) {
   return (
     <>
-      <p className="text-[11px] text-slate-500 mb-2">÷ {games} games for averages</p>
+      <p className="text-[11px] text-slate-500 mb-2">÷ {games} games · rank among 32 teams</p>
       <div className="rounded-xl border border-slate-800 overflow-hidden mb-6">
-        <div className="grid grid-cols-3 gap-0 bg-slate-900/80 text-[10px] uppercase tracking-wide text-slate-500 px-3 py-2 border-b border-slate-800">
+        <div className="grid grid-cols-4 gap-0 bg-slate-900/80 text-[10px] uppercase tracking-wide text-slate-500 px-3 py-2 border-b border-slate-800">
           <span>Stat</span>
           <span className="text-right">Season</span>
           <span className="text-right">Per game</span>
+          <span className="text-right">Rank</span>
         </div>
         <ul>
           {rows.map((row) => (
             <li
               key={row.label}
-              className="grid grid-cols-3 gap-0 px-3 py-2.5 border-b border-slate-800/80 last:border-0 text-sm"
+              className="grid grid-cols-4 gap-0 px-3 py-2.5 border-b border-slate-800/80 last:border-0 text-sm"
             >
               <span className="text-slate-400">{row.label}</span>
               <span className="text-right tabular-nums font-medium text-slate-100">
@@ -34,6 +42,17 @@ function StatTable({ rows, games }: { rows: Row[]; games: number }) {
                     ? row.perGame.toLocaleString()
                     : row.perGame
                   : '—'}
+              </span>
+              <span
+                className={`text-right tabular-nums font-medium ${
+                  row.rank != null && row.rank <= 5
+                    ? 'text-emerald-400'
+                    : row.rank != null && row.rank > 24
+                      ? 'text-rose-400/90'
+                      : 'text-slate-400'
+                }`}
+              >
+                {row.rank != null ? `#${row.rank}` : '—'}
               </span>
             </li>
           ))}
@@ -47,10 +66,32 @@ export default function TeamDetail() {
   const { id } = useParams<{ id: string }>()
   const { data, loading } = useDataLake()
 
-  if (loading) return <div className="p-6 text-slate-400">Loading…</div>
-
   const offense = data?.teamOffenses?.find((o) => o.id === id)
   const defense = data?.defenses?.find((d) => d.id === id)
+  const allOff = data?.teamOffenses || []
+  const allDef = data?.defenses || []
+
+  const powerList = useMemo(() => {
+    const byId = new Map<string, { id: string; power: number }>()
+    for (const o of allOff) {
+      const d = allDef.find((x) => x.id === o.id)
+      const defRps = d?.rps ?? d?.grade ?? 0
+      byId.set(o.id, { id: o.id, power: (o.rps + defRps) / 2 })
+    }
+    for (const d of allDef) {
+      if (!byId.has(d.id)) {
+        byId.set(d.id, { id: d.id, power: (d.rps ?? d.grade ?? 0) / 2 })
+      }
+    }
+    return [...byId.values()]
+  }, [allOff, allDef])
+
+  const powerRankMap = useMemo(
+    () => rankByField(powerList, (t) => t.power),
+    [powerList]
+  )
+
+  if (loading) return <div className="p-6 text-slate-400">Loading…</div>
 
   if (!offense && !defense) {
     return (
@@ -68,85 +109,153 @@ export default function TeamDetail() {
   const offRps = offense?.rps ?? 0
   const defRps = defense?.rps ?? defense?.grade ?? 0
   const power = Math.round(((offRps + defRps) / 2) * 10) / 10
+  const powerEntry = powerList.find((t) => t.id === id)
+  const powerRank = powerEntry ? powerRankMap.get(powerEntry) : undefined
 
-  // Offense rows
   const os = offense?.stats || {}
   const og = Math.max(1, os.gamesPlayed || 1)
-  const offRows: Row[] = []
-  offRows.push({ label: 'Games played', season: og })
+  const offRows: StatRowDef[] = []
+  offRows.push({ label: 'Games played', season: og, noRank: true })
   if (os.pointsPerGame != null)
     offRows.push({
       label: 'Points / game',
       season: Math.round(os.pointsPerGame * 10) / 10,
+      value: os.pointsPerGame,
+      key: 'pointsPerGame',
       perGame: Math.round(os.pointsPerGame * 10) / 10,
     })
   if (os.totalPoints)
-    offRows.push({ label: 'Total points', season: os.totalPoints, perGame: pg(os.totalPoints, og) })
+    offRows.push({
+      label: 'Total points',
+      season: os.totalPoints,
+      value: os.totalPoints,
+      key: 'totalPoints',
+      perGame: pg(os.totalPoints, og),
+    })
   if (os.yardsPerGame != null)
     offRows.push({
       label: 'Yards / game',
       season: Math.round(os.yardsPerGame * 10) / 10,
+      value: os.yardsPerGame,
+      key: 'yardsPerGame',
       perGame: Math.round(os.yardsPerGame * 10) / 10,
     })
   if (os.totalYards)
-    offRows.push({ label: 'Total yards', season: os.totalYards, perGame: pg(os.totalYards, og) })
+    offRows.push({
+      label: 'Total yards',
+      season: os.totalYards,
+      value: os.totalYards,
+      key: 'totalYards',
+      perGame: pg(os.totalYards, og),
+    })
   if (os.passYardsPerGame != null)
     offRows.push({
       label: 'Pass YPG',
       season: Math.round(os.passYardsPerGame * 10) / 10,
+      value: os.passYardsPerGame,
+      key: 'passYardsPerGame',
       perGame: Math.round(os.passYardsPerGame * 10) / 10,
     })
   if (os.rushYardsPerGame != null)
     offRows.push({
       label: 'Rush YPG',
       season: Math.round(os.rushYardsPerGame * 10) / 10,
+      value: os.rushYardsPerGame,
+      key: 'rushYardsPerGame',
       perGame: Math.round(os.rushYardsPerGame * 10) / 10,
     })
   if (os.qbRating)
-    offRows.push({ label: 'QB rating', season: Math.round(os.qbRating * 10) / 10 })
+    offRows.push({
+      label: 'QB rating',
+      season: Math.round(os.qbRating * 10) / 10,
+      value: os.qbRating,
+      key: 'qbRating',
+    })
   if (os.totalTDs != null)
-    offRows.push({ label: 'Total TDs', season: os.totalTDs, perGame: pg(os.totalTDs, og) })
+    offRows.push({
+      label: 'Total TDs',
+      season: os.totalTDs,
+      value: os.totalTDs,
+      key: 'totalTDs',
+      perGame: pg(os.totalTDs, og),
+    })
   if (os.passTDs != null)
-    offRows.push({ label: 'Pass TDs', season: os.passTDs, perGame: pg(os.passTDs, og) })
+    offRows.push({
+      label: 'Pass TDs',
+      season: os.passTDs,
+      value: os.passTDs,
+      key: 'passTDs',
+      perGame: pg(os.passTDs, og),
+    })
   if (os.rushTDs != null)
-    offRows.push({ label: 'Rush TDs', season: os.rushTDs, perGame: pg(os.rushTDs, og) })
+    offRows.push({
+      label: 'Rush TDs',
+      season: os.rushTDs,
+      value: os.rushTDs,
+      key: 'rushTDs',
+      perGame: pg(os.rushTDs, og),
+    })
   if (os.interceptions != null)
     offRows.push({
       label: 'Interceptions',
       season: os.interceptions,
+      value: os.interceptions,
+      key: 'interceptions',
       perGame: pg(os.interceptions, og),
     })
   if (os.fumblesLost != null)
     offRows.push({
       label: 'Fumbles lost',
       season: os.fumblesLost,
+      value: os.fumblesLost,
+      key: 'fumblesLost',
       perGame: pg(os.fumblesLost, og),
     })
   if (os.sacksAllowed != null)
     offRows.push({
       label: 'Sacks allowed',
       season: os.sacksAllowed,
+      value: os.sacksAllowed,
+      key: 'sacksAllowed',
       perGame: pg(os.sacksAllowed, og),
     })
 
-  // Defense rows
+  const rankedOff = withStatRanks(
+    offRows,
+    allOff.map((o) => ({ stats: o.stats as Record<string, number | undefined> })),
+    allOff.length
+  )
+
   const ds = (defense?.stats || {}) as Record<string, number | undefined>
   const dg = Math.max(1, ds.gamesPlayed || defense?.fantasy?.gamesPlayed || 1)
-  const defRows: Row[] = []
-  defRows.push({ label: 'Games played', season: dg })
-  const dAdd = (label: string, v: number | undefined) => {
+  const defRows: StatRowDef[] = []
+  defRows.push({ label: 'Games played', season: dg, noRank: true })
+  const dAdd = (label: string, v: number | undefined, key?: StatRowDef['key'], noRank = false) => {
     if (v == null) return
-    defRows.push({ label, season: v, perGame: pg(v, dg) })
+    defRows.push({ label, season: v, value: v, key, perGame: pg(v, dg), noRank })
   }
-  dAdd('Sacks', ds.sacks)
-  dAdd('Interceptions', ds.ints)
-  dAdd('Fumbles recovered', ds.fumblesRec)
-  dAdd('Fumbles forced', ds.fumblesForced)
-  dAdd('Defensive TDs', ds.defTDs)
-  dAdd('Safeties', ds.safeties)
+  dAdd('Sacks', ds.sacks, undefined, true)
+  dAdd('Interceptions', ds.ints, 'ints')
+  dAdd('Fumbles recovered', ds.fumblesRec, 'fumblesRec')
+  dAdd('Fumbles forced', ds.fumblesForced, 'fumblesForced')
+  dAdd('Defensive TDs', ds.defTDs, 'defTDs')
+  dAdd('Safeties', ds.safeties, 'safeties')
   dAdd('Kicks blocked', ds.kicksBlocked)
-  dAdd('Points allowed', ds.ptsAllowed)
-  dAdd('Yards allowed', ds.yardsAllowed)
+  dAdd('Points allowed', ds.ptsAllowed, 'ptsAllowed')
+  dAdd('Yards allowed', ds.yardsAllowed, 'yardsAllowed')
+
+  let rankedDef = withStatRanks(
+    defRows,
+    allDef.map((d) => ({ stats: d.stats as Record<string, number | undefined> })),
+    allDef.length
+  )
+  if (ds.sacks != null) {
+    const vals = allDef.map((d) => (d.stats as Record<string, number | undefined>).sacks || 0)
+    const sr = [...vals].sort((a, b) => b - a).indexOf(ds.sacks) + 1
+    rankedDef = rankedDef.map((r) =>
+      r.label === 'Sacks' ? { ...r, rank: sr, of: allDef.length } : r
+    )
+  }
 
   return (
     <div className="px-4 pt-4 pb-8">
@@ -163,6 +272,50 @@ export default function TeamDetail() {
           <p className="text-slate-400">{abbr} · Team power profile</p>
         </div>
       </div>
+
+      <RankSummary
+        title="Season ranks"
+        chips={[
+          {
+            id: 'power',
+            label: 'Power rank',
+            rank: powerRank != null ? `#${powerRank}` : '—',
+            score: `${power.toFixed(1)} power`,
+            sublabel: '(OFF+DEF)/2',
+            accent: 'amber',
+          },
+          {
+            id: 'off',
+            label: 'OFF RPS',
+            rank: offense ? `#${offense.rank}` : '—',
+            score: `${offRps.toFixed(1)}`,
+            sublabel: offense?.rpsLabel ?? '—',
+            accent: 'violet',
+          },
+          {
+            id: 'def',
+            label: 'DEF rank',
+            rank: defense?.rank != null ? `#${defense.rank}` : '—',
+            score: `${defRps.toFixed(1)}`,
+            sublabel: defense?.rpsLabel ?? defense?.gradeLabel ?? '—',
+            accent: 'sky',
+          },
+        ]}
+        breakdown={[
+          {
+            title: 'Power rank',
+            body: 'Average of offense RPS and defense RPS (real football, not fantasy). Ranked among all 32 NFL teams. #1 = strongest overall side of the ball combination.',
+          },
+          {
+            title: 'OFF RPS rank',
+            body: 'Team offense real-football value among 32 teams. Drives DST matchup multipliers.',
+          },
+          {
+            title: 'DEF rank',
+            body: 'Team defense fantasy grade rank among 32 DSTs (league scoring settings).',
+          },
+        ]}
+      />
 
       <div className="grid grid-cols-3 gap-2 mb-6">
         <div className="bg-slate-900 rounded-xl p-3 border border-amber-800/40 text-center">
@@ -206,14 +359,14 @@ export default function TeamDetail() {
       {offense && (
         <>
           <h2 className="text-lg font-semibold mb-1 text-violet-300">Offense</h2>
-          <StatTable rows={offRows} games={og} />
+          <StatTable rows={rankedOff} games={og} />
         </>
       )}
 
       {defense && (
         <>
           <h2 className="text-lg font-semibold mb-1 text-sky-300">Defense</h2>
-          <StatTable rows={defRows} games={dg} />
+          <StatTable rows={rankedDef} games={dg} />
         </>
       )}
 
