@@ -583,28 +583,39 @@ async function main() {
   const board = await fetchJson(
     'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'
   )
-  const currentWeek = board.week?.number || 6
-  // After a week ends ESPN often still returns that week (all Final).
-  // For fantasy projections use the next week once every game is complete.
+  const espnWeek = board.week?.number || 6
+  // NFL calendar (US Eastern): Tue–Wed ESPN often still reports the completed week.
+  // Add +1 only Tue/Wed when that week is fully Final. From Thursday on, trust ESPN.
+  const et = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })
+  )
+  const etDay = et.getDay() // 0=Sun … 2=Tue, 3=Wed, 4=Thu
+  const midweekGap = etDay === 2 || etDay === 3
   const events = board.events || []
   const hasUpcoming = events.some((e) => {
     const typ = e.status?.type
     if (!typ) return false
     if (typ.completed) return false
-    const name = String(typ.name || '')
-    return name !== 'STATUS_FINAL'
+    return String(typ.name || '') !== 'STATUS_FINAL'
   })
-  let projectionWeek = currentWeek
-  if (events.length > 0 && !hasUpcoming) {
-    projectionWeek = currentWeek + 1
+  let projectionWeek = espnWeek
+  if (midweekGap && events.length > 0 && !hasUpcoming) {
+    projectionWeek = espnWeek + 1
   }
   console.log(
     'ESPN week',
-    currentWeek,
+    espnWeek,
+    'ET day',
+    etDay,
     'projection week',
     projectionWeek,
-    hasUpcoming ? '(in progress)' : '(week complete → +1)'
+    midweekGap
+      ? hasUpcoming
+        ? '(Tue/Wed but games still live)'
+        : '(Tue/Wed +1)'
+      : '(Thu–Mon trust ESPN)'
   )
+  const currentWeek = projectionWeek
 
   const { map: matchups } = await loadMatchups(projectionWeek)
   console.log('Matchups loaded', Object.keys(matchups).length)
