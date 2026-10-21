@@ -1,6 +1,7 @@
 /**
  * Weekly ESPN data lake sync.
  * Full fantasy-position rosters + rank grades vs league/pos pools.
+ * Only players with real current-season (SEASON) gamesPlayed are retained.
  */
 import { writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
@@ -108,7 +109,7 @@ function gradeAll(players) {
 
 async function fetchJson(url) {
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'nfl-player-ratings/1.3', Accept: 'application/json' },
+    headers: { 'User-Agent': 'nfl-player-ratings/1.4', Accept: 'application/json' },
   })
   if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + url)
   return res.json()
@@ -130,5 +131,218 @@ function idFromRef(ref) {
   return m ? m[1] : null
 }
 
-// NOTE: truncated in this call for length — full file will be restored via second pass if needed
-console.log('partial - will complete')
+async function collectIds() {
+  const ids = new Set()
+  try {
+    const data = await fetchJson(
+      `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${SEASON}/types/2/leaders?limit=200`
+    )
+    for (const cat of data.categories || []) {
+      if (/pass|rush|receiv|field|kick|scor|touch|reception/i.test(cat.name || '')) {
+        for (const L of cat.leaders || []) {
+          const id = idFromRef(L.athlete?.$ref || L.athlete)
+          if (id) ids.add(id)
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('leaders collect', e.message)
+  }
+
+  try {
+    const teams = await fetchJson(
+      'https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams'
+    )
+    for (const item of teams.sports?.[0]?.leagues?.[0]?.teams || []) {
+      const tid = item.team?.id
+      if (!tid) continue
+      try {
+        const roster = await fetchJson(
+          `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${tid}/roster`
+        )
+        for (const group of roster.athletes || []) {
+          for (const a of group.items || []) {
+            const pos = mapPos(a.position?.abbreviation || a.position?.name)
+            if (!pos) continue
+            if (a.id) ids.add(String(a.id))
+          }
+        }
+      } catch (e) {
+        console.warn('roster', tid, e.message)
+      }
+      await new Promise((r) => setTimeout(r, 30))
+    }
+  } catch (e) {
+    console.warn('teams roster collect', e.message)
+  }
+
+  console.log('collectIds total', ids.size)
+  return [...ids]
+}
+
+function parseStats(overview) {
+  const stats = {}
+  const block = overview?.statistics
+  if (!block) return stats
+  const names = block.names || []
+  const split =
+    (block.splits || []).find((s) => /regular/i.test(s.displayName || '')) ||
+    (block.splits || [])[0]
+  if (!split?.stats) return stats
+  const map = {}
+  names.forEach((n, i) => {
+    if (n) map[n] = num(split.stats[i])
+  })
+  stats.carries = map.rushingAttempts || 0
+  stats.rushYds = map.rushingYards || 0
+  stats.rushTDs = map.rushingTouchdowns || 0
+  stats.receptions = map.receptions || 0
+  stats.targets = map.receivingTargets || 0
+  stats.recYds = map.receivingYards || 0
+  stats.recTDs = map.receivingTouchdowns || 0
+  stats.passYds = map.passingYards || 0
+  stats.passTDs = map.passingTouchdowns || 0
+  stats.interceptions = map.interceptions || map.passingInterceptions || 0
+  stats.completions = map.completions || 0
+  stats.passAtt = map.passingAttempts || 0
+  stats.fgMade = map.fieldGoalsMade || 0
+  stats.fgAtt = map.fieldGoalAttempts || 0
+  stats.xpMade = map.extraPointsMade || 0
+  stats.sacks = map.sacks || 0
+  stats.fumblesLost = 0
+  if (map.fumblesLost != null) stats.fumblesLost = map.fumblesLost
+  else if (map.losingFumbles != null) stats.fumblesLost = map.losingFumbles
+  else if (map.fumbles != null) stats.fumblesLost = map.fumbles
+  return stats
+}
+
+function parseFantasyMeta(overview) {
+  const f = overview?.fantasy || {}
+  const pct = num(f.percentOwned)
+  return {
+    percentOwned: pct > 0 ? pct : undefined,
+    positionRankEspn: f.positionRank ? String(f.positionRank) : undefined,
+  }
+}
+
+async function fetchGamesPlayed(id) {
+  // Season-scoped only. 404 / empty = no 2026 participation — do NOT fall back to career.
+  try {
+    const data = await fetchJson(
+      `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${SEASON}/types/2/athletes/${id}/statistics`
+    )
+    if (data?.error || !data?.splits) {
+      return { gamesPlayed: 0, teamGamesPlayed: 0, gamesStarted: 0, kick: {}, hasSeasonStats: false }
+    }
+    const cats = data?.splits?.categories || []
+    if (!cats.length) {
+      return { gamesPlayed: 0, teamGamesPlayed: 0, gamesStarted: 0, kick: {}, hasSeasonStats: false }
+    }
+    let gamesPlayed = 0
+    let teamGamesPlayed = 0
+    let gamesStarted = 0
+    const kick = {}
+    for (const cat of cats) {
+      const catName = (cat.name || '').toLowerCase()
+      for (const s of cat.stats || []) {
+        const name = (s.name || '').toLowerCase()
+        const abbr = (s.abbreviation || '').toLowerCase()
+        const val = num(s.value ?? s.displayValue)
+        if (name === 'gamesplayed') gamesPlayed = val
+        if (name === 'teamgamesplayed' || abbr === 'tgp') teamGamesPlayed = val
+        if (name === 'gamesstarted' || abbr === 'gs') gamesStarted = val
+        if (name === 'fumbleslost' || abbr === 'fuml' || name === 'losingfumbles')
+          kick.fumblesLost = val
+        if (name === 'fumbles' && kick.fumblesLost == null) kick.fumblesLost = val
+        if (catName === 'kicking' || catName === 'scoring') {
+          if (name === 'extrapointsmade' || abbr === 'xpm') kick.xpMade = val
+          if (name === 'fieldgoalsmade' || abbr === 'fgm') kick.fgMade = val
+          if (name === 'fieldgoalattempts' || abbr === 'fga') kick.fgAtt = val
+          if (name === 'fieldgoalsmade1_19') kick.fgMade1_19 = val
+          if (name === 'fieldgoalsmade20_29') kick.fgMade20_29 = val
+          if (name === 'fieldgoalsmade30_39') kick.fgMade30_39 = val
+          if (name === 'fieldgoalsmade40_49') kick.fgMade40_49 = val
+          if (name === 'fieldgoalsmade50_59') kick.fgMade50_59 = val
+          if (name === 'fieldgoalsmade60_99' || name === 'fieldgoalsmade60') kick.fgMade60 = val
+          if (name === 'fieldgoalattempts1_19') kick.fgAtt1_19 = val
+          if (name === 'fieldgoalattempts20_29') kick.fgAtt20_29 = val
+          if (name === 'fieldgoalattempts30_39') kick.fgAtt30_39 = val
+          if (name === 'fieldgoalattempts40_49') kick.fgAtt40_49 = val
+          if (name === 'fieldgoalattempts50_59') kick.fgAtt50_59 = val
+          if (name === 'fieldgoalattempts60_99') kick.fgAtt60 = val
+        }
+      }
+    }
+    const made =
+      safe(kick.fgMade1_19) +
+      safe(kick.fgMade20_29) +
+      safe(kick.fgMade30_39) +
+      safe(kick.fgMade40_49) +
+      safe(kick.fgMade50_59) +
+      safe(kick.fgMade60)
+    const att =
+      safe(kick.fgAtt1_19) +
+      safe(kick.fgAtt20_29) +
+      safe(kick.fgAtt30_39) +
+      safe(kick.fgAtt40_49) +
+      safe(kick.fgAtt50_59) +
+      safe(kick.fgAtt60)
+    if (att > 0) kick.fgMissed = Math.max(0, att - made)
+    else if (safe(kick.fgAtt) > 0) kick.fgMissed = Math.max(0, safe(kick.fgAtt) - safe(kick.fgMade))
+    return { gamesPlayed, teamGamesPlayed, gamesStarted, kick, hasSeasonStats: true }
+  } catch {
+    return { gamesPlayed: 0, teamGamesPlayed: 0, gamesStarted: 0, kick: {}, hasSeasonStats: false }
+  }
+}
+
+async function profile(id) {
+  const overview = await fetchJson(
+    `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}/overview`
+  )
+  let bio = {}
+  try {
+    bio = await fetchJson(
+      `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${id}`
+    )
+  } catch {}
+  const a = bio.athlete || bio || {}
+  const pos = mapPos(a.position?.abbreviation || a.position?.name)
+  // Overview "Regular Season" is NOT year-scoped for inactive players (e.g. Justin Jackson → 2022).
+  // Only trust volume stats when the season-scoped core endpoint has data for SEASON.
+  const gp = await fetchGamesPlayed(id)
+  let stats
+  if (gp.hasSeasonStats && (gp.gamesPlayed || 0) > 0) {
+    stats = parseStats(overview)
+    stats.gamesPlayed = gp.gamesPlayed || 0
+    stats.teamGamesPlayed = gp.teamGamesPlayed || 0
+    stats.gamesStarted = gp.gamesStarted || 0
+    if (gp.kick?.fumblesLost != null) stats.fumblesLost = gp.kick.fumblesLost
+    if (pos === 'K' && gp.kick) Object.assign(stats, gp.kick)
+  } else {
+    // No 2026 participation — zero production so we never invent GP from prior-year volume
+    stats = {
+      carries: 0, rushYds: 0, rushTDs: 0, receptions: 0, targets: 0, recYds: 0, recTDs: 0,
+      passYds: 0, passTDs: 0, interceptions: 0, completions: 0, passAtt: 0,
+      fgMade: 0, fgAtt: 0, xpMade: 0, sacks: 0, fumblesLost: 0,
+      gamesPlayed: 0, teamGamesPlayed: 0, gamesStarted: 0,
+    }
+  }
+  const fantasyMeta = parseFantasyMeta(overview)
+  const team = a.team?.abbreviation || a.teamShortName || 'FA'
+  return {
+    id: String(id),
+    name: a.displayName || `Player ${id}`,
+    firstName: a.firstName || '',
+    lastName: a.lastName || '',
+    position: pos,
+    team: String(team).slice(0, 4),
+    teamId: String(a.team?.id || a.teamId || ''),
+    jersey: a.jersey,
+    stats,
+    grade: 0,
+    gradeLabel: 'Average',
+    fantasyMeta,
+    statusFromBio: a.status?.name || 'Active',
+    lastUpdated: new Date().toISOString(),
+  }
+}
