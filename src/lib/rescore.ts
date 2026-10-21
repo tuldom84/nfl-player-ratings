@@ -88,28 +88,17 @@ function gradeLabel(score: number): string {
   return 'Below'
 }
 
-const POS_POOL: Partial<Record<Position, number>> = {
-  QB: 120,
-  RB: 200,
-  WR: 330,
-  TE: 190,
-  K: 45,
-  DST: 32,
-}
-const LEAGUE_POOL = 1600
-
-function rankNormalize(values: number[], populationSize: number): number[] {
+/**
+ * Value-based 0–100 scale within a group (same approach as RPS).
+ * Rank-vs-fixed-pool collapsed elites (e.g. Gibbs 31 PPG and Walker 27 PPG
+ * both near 100). Min-max on the metric preserves gaps.
+ */
+function valueNormalize(values: number[]): number[] {
   if (!values.length) return []
-  const denom = Math.max(populationSize, 1)
-  const order = values
-    .map((v, i) => ({ v, i }))
-    .sort((a, b) => b.v - a.v)
-  const out = new Array(values.length)
-  order.forEach((item, rank0) => {
-    const score = 100 * (1 - rank0 / denom)
-    out[item.i] = Math.round(Math.max(0, Math.min(100, score)) * 10) / 10
-  })
-  return out
+  const mn = Math.min(...values)
+  const mx = Math.max(...values)
+  const range = mx - mn || 1
+  return values.map((v) => Math.round(((v - mn) / range) * 1000) / 10)
 }
 
 function gradeByPosition<T extends { position: Position; avgPts: number }>(
@@ -122,12 +111,8 @@ function gradeByPosition<T extends { position: Position; avgPts: number }>(
     byPos.set(it.position, list)
   }
   const out: (T & { grade: number; gradeLabel: string })[] = []
-  for (const [pos, group] of byPos) {
-    const pool = POS_POOL[pos] || LEAGUE_POOL
-    const norms = rankNormalize(
-      group.map((g) => g.avgPts),
-      pool
-    )
+  for (const [, group] of byPos) {
+    const norms = valueNormalize(group.map((g) => g.avgPts))
     group.forEach((g, i) => {
       const grade = norms[i]
       out.push({ ...g, grade, gradeLabel: gradeLabel(grade) })

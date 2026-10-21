@@ -7,6 +7,9 @@
  *  3. Positional value — PPR scarcity weights by position
  *
  * Never overwrites position-relative `grade` / `gradeLabel` / DST `rank`.
+ *
+ * Grades use within-pool min-max on valueRaw (same idea as RPS), not rank
+ * against a fixed 1600-player pool — that collapsed top players to ~100.
  */
 
 import type { Position, DataLake } from './types'
@@ -28,25 +31,16 @@ function gradeLabel(score: number): string {
   return 'Below'
 }
 
-/** Active-player pool for cross-position value ranks. */
-const LEAGUE_POOL = 1600
-
 /**
- * Rank vs full-league pool so a truncated sample (top scorers only)
- * does not force the worst in-sample player to ~0.
+ * Min-max to 0–100 on the actual metric values in this pool.
+ * Preserves gaps (e.g. 31 vs 27 PPG) instead of rank steps of ~0.5.
  */
-function rankNormalize(values: number[], populationSize: number): number[] {
+function valueNormalize(values: number[]): number[] {
   if (!values.length) return []
-  const denom = Math.max(populationSize, 1)
-  const order = values
-    .map((v, i) => ({ v, i }))
-    .sort((a, b) => b.v - a.v)
-  const out = new Array(values.length)
-  order.forEach((item, rank0) => {
-    const score = 100 * (1 - rank0 / denom)
-    out[item.i] = Math.round(Math.max(0, Math.min(100, score)) * 10) / 10
-  })
-  return out
+  const mn = Math.min(...values)
+  const mx = Math.max(...values)
+  const range = mx - mn || 1
+  return values.map((v) => Math.round(((v - mn) / range) * 1000) / 10)
 }
 
 /** League-wide estimate of how many team games have been played so far. */
@@ -178,10 +172,7 @@ export function applyValueGrades(lake: DataLake): DataLake {
     })
   })
 
-  const norms = rankNormalize(
-    rows.map((r) => r.valueRaw),
-    LEAGUE_POOL
-  )
+  const norms = valueNormalize(rows.map((r) => r.valueRaw))
   const players = lake.players.map((p) => ({ ...p }))
   const defenses = lake.defenses.map((d) => ({ ...d }))
 
