@@ -69,8 +69,47 @@ export function scoreKicker(stats, safe) {
   )
 }
 
+/** Score one DST game from actual boxscore fields. */
+export function scoreDstGame(g, safe) {
+  const s = safe || ((v) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0))
+  let pts = 0
+  pts += s(g.sacks) * DST_SCORE.sack
+  pts += s(g.ints) * DST_SCORE.int
+  pts += s(g.fumblesRec) * DST_SCORE.fumRec
+  pts += s(g.fumblesForced) * DST_SCORE.fumForced
+  pts += s(g.safeties) * DST_SCORE.safety
+  pts += s(g.onePtSafeties) * DST_SCORE.onePtSafety
+  pts += s(g.twoPtReturns) * DST_SCORE.twoPtReturn
+  pts += s(g.defTDs) * DST_SCORE.defTD
+  pts += s(g.kicksBlocked) * DST_SCORE.blockedKick
+  if (g.ptsAllowed != null) pts += bracketPts(DST_SCORE.pa, s(g.ptsAllowed))
+  if (g.yardsAllowed != null) pts += bracketPts(DST_SCORE.ya, s(g.yardsAllowed))
+  return Math.round(pts * 10) / 10
+}
+
+/**
+ * Season DST points.
+ * When gameLogs include per-game counting stats (sacks/ints/…), sum full
+ * per-game scores. Otherwise: season counting totals + PA/YA brackets per game.
+ */
 export function scoreDstSeason(stats, safe) {
   const s = safe || ((v) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0))
+  const logs = stats.gameLogs || []
+  const hasPerGameCounting = logs.some(
+    (g) => g.sacks != null || g.ints != null || g.fumblesRec != null || g.defTDs != null
+  )
+
+  if (logs.length && hasPerGameCounting) {
+    let pts = 0
+    for (const g of logs) pts += scoreDstGame(g, s)
+    // Season-only leftovers not reliably in boxscore game lines
+    pts += s(stats.fumblesForced) * DST_SCORE.fumForced
+    pts += s(stats.onePtSafeties) * DST_SCORE.onePtSafety
+    pts += s(stats.twoPtReturns) * DST_SCORE.twoPtReturn
+    pts += s(stats.kicksBlocked) * DST_SCORE.blockedKick
+    return Math.round(pts * 10) / 10
+  }
+
   let pts = 0
   pts += s(stats.sacks) * DST_SCORE.sack
   pts += s(stats.ints) * DST_SCORE.int
@@ -81,12 +120,12 @@ export function scoreDstSeason(stats, safe) {
   pts += s(stats.twoPtReturns) * DST_SCORE.twoPtReturn
   pts += s(stats.defTDs) * DST_SCORE.defTD
   pts += s(stats.kicksBlocked) * DST_SCORE.blockedKick
-  const logs = stats.gameLogs || []
-  for (const g of logs) {
-    pts += bracketPts(DST_SCORE.pa, s(g.ptsAllowed))
-    pts += bracketPts(DST_SCORE.ya, s(g.yardsAllowed))
-  }
-  if (!logs.length) {
+  if (logs.length) {
+    for (const g of logs) {
+      pts += bracketPts(DST_SCORE.pa, s(g.ptsAllowed))
+      pts += bracketPts(DST_SCORE.ya, s(g.yardsAllowed))
+    }
+  } else {
     const gp = Math.max(1, s(stats.gamesPlayed) || 1)
     pts += bracketPts(DST_SCORE.pa, s(stats.ptsAllowed) / gp) * gp
     pts += bracketPts(DST_SCORE.ya, s(stats.yardsAllowed) / gp) * gp
