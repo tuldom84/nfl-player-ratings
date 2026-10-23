@@ -230,6 +230,14 @@ export default function Settings() {
                 setDraft((p) => markCustom({ ...p, offense: { ...p.offense, recTD: n } }))
               }
             />
+            <NumField
+              label="Fumble lost"
+              value={o.fumLost ?? -2}
+              step={1}
+              onChange={(n) =>
+                setDraft((p) => markCustom({ ...p, offense: { ...p.offense, fumLost: n } }))
+              }
+            />
           </>
         )}
 
