@@ -54,14 +54,13 @@ export default function DefenseDetail() {
   }
 
   rows.push({ label: 'Games played', season: games, noRank: true })
-  // Sacks: higher is better for DST (unlike QB sacks taken)
   if (s.sacks != null) {
     rows.push({
       label: 'Sacks',
       value: s.sacks,
       season: s.sacks,
       perGame: pg(s.sacks, games),
-      noRank: true, // ranked manually below
+      noRank: true,
     })
   }
   add('Interceptions', s.ints, 'ints', true)
@@ -147,7 +146,7 @@ export default function DefenseDetail() {
         breakdown={[
           {
             title: 'DST rank',
-            body: 'Fantasy position grade among all 32 team defenses using your league DST scoring (sacks, turnovers, TDs, PA/YA brackets). #1 = highest fantasy production.',
+            body: 'Fantasy position grade among all 32 team defenses using your league DST scoring (sacks, turnovers, TDs, PA/YA brackets applied per game). #1 = highest fantasy production.',
           },
           {
             title: 'Value rank',
@@ -215,7 +214,7 @@ export default function DefenseDetail() {
         </div>
       )}
 
-      <GameLogSection kind="dst" teamId={defense.id} />
+      <GameLogSection kind="dst" teamId={defense.id} lakeLogs={defense.stats?.gameLogs} />
 
       <h2 className="text-lg font-semibold mb-2">Season stats</h2>
       <p className="text-[11px] text-slate-500 mb-3">
@@ -263,7 +262,8 @@ export default function DefenseDetail() {
       </div>
 
       <p className="mt-4 text-xs text-slate-500 leading-relaxed">
-        DST grades use league scoring. Weekly projection adjusts for opponent{' '}
+        DST grades use league PA/YA brackets <strong className="text-slate-400">per game</strong>{' '}
+        (not season average). Weekly projection adjusts for opponent{' '}
         <strong className="text-slate-400">offense RPS</strong>.
       </p>
     </div>
