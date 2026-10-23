@@ -6,7 +6,16 @@ import { fetchJson, num, SEASON } from './sync-lib.mjs'
 
 function findStat(list, name) {
   const hit = (list || []).find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
-  return hit?.value ?? hit?.displayValue
+  if (!hit) return undefined
+  const v = hit.value
+  if (v != null && v !== '-' && !(typeof v === 'string' && String(v).trim() === '')) return v
+  return hit.displayValue
+}
+
+function scoreValue(v) {
+  if (v == null) return 0
+  if (typeof v === 'object') return num(v.value ?? v.displayValue)
+  return num(v)
 }
 
 /**
@@ -32,7 +41,7 @@ export async function appendDstGameLogs(stats, teamId, abbreviation) {
       typeof e.week === 'number' ? e.week : num(e.week?.number ?? e.week?.text)
     const homeAway =
       self.homeAway === 'home' ? 'home' : self.homeAway === 'away' ? 'away' : 'neutral'
-    const ptsAllowed = num(opp.score?.value ?? opp.score)
+    const ptsAllowed = scoreValue(opp.score)
 
     let yardsAllowed = 0
     let sacks = 0
@@ -54,7 +63,6 @@ export async function appendDstGameLogs(stats, teamId, abbreviation) {
         const st = t.statistics || []
         if (isOpp) {
           yardsAllowed = num(findStat(st, 'totalYards'))
-          // Sacks by us ≈ opponent sacksYardsLost "4-34"
           const sackStr = String(findStat(st, 'sacksYardsLost') ?? '')
           sacks = num(sackStr.split('-')[0])
           ints = num(findStat(st, 'interceptions'))
