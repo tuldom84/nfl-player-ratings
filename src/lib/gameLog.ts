@@ -10,11 +10,27 @@ import {
 } from './scoringSettings'
 
 export type GameLogRow = {
+  eventId?: string
   week: number
   opponent: string
   homeAway: 'home' | 'away' | 'neutral'
   fantasyPts: number
   result?: string
+}
+
+export type GameBoxScore = {
+  teams: Array<{
+    name: string
+    statistics: Array<{ name: string; value: string }>
+  }>
+  playerGroups: Array<{
+    teamName: string
+    sections: Array<{
+      name: string
+      headers: string[]
+      players: Array<{ name: string; stats: string[] }>
+    }>
+  }>
 }
 
 const SEASON = 2026
@@ -210,6 +226,7 @@ export async function fetchPlayerGameLog(
     const homeAway: GameLogRow['homeAway'] =
       atVs === '@' || atVs === 'at' ? 'away' : atVs === 'vs' ? 'home' : 'neutral'
     rows.push({
+      eventId: ev.eventId,
       week,
       opponent: opp,
       homeAway,
@@ -223,6 +240,58 @@ export async function fetchPlayerGameLog(
 }
 
 type BoxStat = { name?: string; displayValue?: string; value?: number | string }
+
+type EspnBoxScore = {
+  boxscore?: {
+    teams?: Array<{
+      team?: { displayName?: string }
+      statistics?: BoxStat[]
+    }>
+    players?: Array<{
+      team?: { displayName?: string }
+      statistics?: Array<{
+        name?: string
+        keys?: string[]
+        athletes?: Array<{
+          athlete?: { displayName?: string; fullName?: string }
+          stats?: string[]
+        }>
+      }>
+    }>
+  }
+}
+
+export async function fetchGameBoxScore(eventId: string): Promise<GameBoxScore> {
+  const res = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${eventId}`
+  )
+  if (!res.ok) throw new Error(`Box score HTTP ${res.status}`)
+
+  const summary = (await res.json()) as EspnBoxScore
+  const boxscore = summary.boxscore
+  if (!boxscore) throw new Error('Box score is unavailable for this game')
+
+  return {
+    teams: (boxscore.teams || []).map((team) => ({
+      name: team.team?.displayName || 'Team',
+      statistics: (team.statistics || []).map((stat) => ({
+        name: stat.name || 'Stat',
+        value: String(stat.displayValue ?? stat.value ?? '—'),
+      })),
+    })),
+    playerGroups: (boxscore.players || []).map((team) => ({
+      teamName: team.team?.displayName || 'Team',
+      sections: (team.statistics || []).map((section) => ({
+        name: section.name || 'Player stats',
+        headers: section.keys || [],
+        players: (section.athletes || []).map((player) => ({
+          name: player.athlete?.displayName || player.athlete?.fullName || 'Player',
+          stats: player.stats || [],
+        })),
+      })),
+    })),
+  }
+}
 
 function findStat(list: BoxStat[], name: string): string | number | undefined {
   const hit = list.find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
@@ -343,6 +412,7 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
 
     const hasBox = summary != null
     rows.push({
+      eventId,
       week,
       opponent: opp.team?.abbreviation || '—',
       homeAway,

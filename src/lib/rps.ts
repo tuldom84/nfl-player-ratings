@@ -7,7 +7,7 @@
  * from completions/attempts/yards/TDs/INTs and weighted as the primary efficiency metric.
  */
 
-import type { DataLake, Player, TeamDefense, Position, PlayerStats } from './types'
+import type { DataLake, Position, PlayerStats } from './types'
 
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 
@@ -164,14 +164,6 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
   }
 
   if (position === 'K') {
-    const fgMade =
-      safe(st.fgMade1_19) +
-      safe(st.fgMade20_29) +
-      safe(st.fgMade30_39) +
-      safe(st.fgMade40_49) +
-      safe(st.fgMade50_59) +
-      safe(st.fgMade60) +
-      safe(stats.fgMade)
     // Prefer distance-aware made count if buckets exist
     const madeBuckets =
       safe(st.fgMade1_19) +

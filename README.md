@@ -81,7 +81,7 @@ The app is automatically deployed to GitHub Pages on every push to `main` via `.
 
 ## Project Structure
 
-```
+```text
 src/
   components/     # shared UI
   features/       # Home, Rankings, PlayerDetail, About

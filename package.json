@@ -14,6 +14,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
+    "shellcheck": "^1.1.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -26,5 +27,9 @@
     "typescript": "~5.7.0",
     "vite": "^6.0.0",
     "vite-plugin-pwa": "^0.21.0"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "shellcheck@1.1.0": true
   }
 }
