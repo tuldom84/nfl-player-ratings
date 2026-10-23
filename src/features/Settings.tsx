@@ -232,7 +232,7 @@ export default function Settings() {
             />
             <NumField
               label="Fumble lost"
-              value={o.fumLost ?? -2}
+              value={o.fumLost}
               step={1}
               onChange={(n) =>
                 setDraft((p) => markCustom({ ...p, offense: { ...p.offense, fumLost: n } }))
@@ -330,7 +330,7 @@ export default function Settings() {
             />
             <NumField
               label="1pt safety"
-              value={d.onePtSafety ?? 2}
+              value={d.onePtSafety}
               step={1}
               onChange={(n) =>
                 setDraft((p) => markCustom({ ...p, dst: { ...p.dst, onePtSafety: n } }))
@@ -338,7 +338,7 @@ export default function Settings() {
             />
             <NumField
               label="2pt return"
-              value={d.twoPtReturn ?? 2}
+              value={d.twoPtReturn}
               step={1}
               onChange={(n) =>
                 setDraft((p) => markCustom({ ...p, dst: { ...p.dst, twoPtReturn: n } }))
