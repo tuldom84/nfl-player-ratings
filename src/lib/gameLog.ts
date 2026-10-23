@@ -1,6 +1,5 @@
 /**
  * On-demand ESPN game logs → week / opponent / fantasy points.
- * Fetched only when the user opens the Game Log section (not in weekly sync).
  * Always scores with the user's current saved scoring settings (loadScoringSettings).
  */
 import type { Position } from './types'
@@ -24,7 +23,6 @@ function num(v: unknown): number {
   if (v == null || v === '-' || v === '') return 0
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0
   const s = String(v).trim()
-  // "2-3" made-attempt → take made
   if (s.includes('-') && !s.startsWith('-')) {
     const made = Number(s.split('-')[0])
     return Number.isFinite(made) ? made : 0
@@ -33,7 +31,6 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
-/** ESPN score can be a number, string, or { value, displayValue }. */
 function scoreValue(v: unknown): number {
   if (v == null) return 0
   if (typeof v === 'object') {
@@ -79,6 +76,7 @@ function mapStats(names: string[], values: string[]): Record<string, number> {
   return out
 }
 
+/** Score one player game using only settings rates (no hardcoded multipliers). */
 export function scorePlayerGame(
   stats: Record<string, number>,
   position: Position,
@@ -96,15 +94,15 @@ export function scorePlayerGame(
       (stats.interceptions || 0) * off.int +
       (stats.rushingYards || 0) * off.rushYd +
       (stats.rushingTouchdowns || 0) * off.rushTD +
-      (stats.fumblesLost || 0) * (off.fumLost ?? -2)
+      (stats.fumblesLost || 0) * off.fumLost
   } else if (position === 'RB' || position === 'WR' || position === 'TE') {
     pts +=
       (stats.rushingYards || 0) * off.rushYd +
       (stats.rushingTouchdowns || 0) * off.rushTD +
       (stats.receptions || 0) * off.rec +
       (stats.receivingYards || 0) * off.recYd +
-      (stats.receivingTouchdowns || 0) * off.recTD
-    if (stats.fumblesLost) pts += stats.fumblesLost * (off.fumLost ?? -2)
+      (stats.receivingTouchdowns || 0) * off.recTD +
+      (stats.fumblesLost || 0) * off.fumLost
   } else if (position === 'K') {
     const fg0 =
       (stats.fieldGoalsMade1_19 || 0) +
@@ -137,6 +135,7 @@ export function scorePlayerGame(
   return Math.round(pts * 10) / 10
 }
 
+/** Score one DST game using only settings.dst rates + PA/YA brackets. */
 export function scoreDstGame(
   stats: {
     sacks?: number
@@ -255,10 +254,6 @@ async function fetchSummary(eventId: string, attempt = 0): Promise<Record<string
   }
 }
 
-/**
- * DST game log — on demand from schedule + boxscore.
- * Scores each week with the user's current PA/YA brackets and counting rates.
- */
 export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
   const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/schedule?season=${SEASON}`
   const res = await fetch(scheduleUrl)
