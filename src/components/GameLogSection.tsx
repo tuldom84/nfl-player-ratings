@@ -1,14 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Position } from '../lib/types'
 import {
   fetchPlayerGameLog,
   fetchDstGameLog,
   type GameLogRow,
 } from '../lib/gameLog'
+import { loadScoringSettings } from '../lib/scoringSettings'
+
+/** Season-only DST counting not available on ESPN team boxscore weeks. */
+export type DstSeasonExtras = {
+  fumblesForced?: number
+  kicksBlocked?: number
+  onePtSafeties?: number
+  twoPtReturns?: number
+}
 
 type Props =
   | { kind: 'player'; athleteId: string; position: Position }
-  | { kind: 'dst'; teamId: string }
+  | { kind: 'dst'; teamId: string; seasonExtras?: DstSeasonExtras }
+
+function scoreDstExtras(extras: DstSeasonExtras | undefined): number {
+  if (!extras) return 0
+  const d = loadScoringSettings().dst
+  let pts = 0
+  pts += (extras.fumblesForced || 0) * d.fumForced
+  pts += (extras.kicksBlocked || 0) * d.blockedKick
+  pts += (extras.onePtSafeties || 0) * (d.onePtSafety ?? 2)
+  pts += (extras.twoPtReturns || 0) * (d.twoPtReturn ?? 2)
+  return Math.round(pts * 10) / 10
+}
 
 export function GameLogSection(props: Props) {
   const [open, setOpen] = useState(false)
@@ -16,9 +36,14 @@ export function GameLogSection(props: Props) {
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<GameLogRow[] | null>(null)
 
+  const extrasPts = useMemo(
+    () => (props.kind === 'dst' ? scoreDstExtras(props.seasonExtras) : 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.kind === 'dst' ? JSON.stringify(props.seasonExtras) : '']
+  )
+
   useEffect(() => {
     if (!open) return
-    // Already loaded for this open session
     if (rows != null) return
     if (loading) return
 
@@ -50,14 +75,14 @@ export function GameLogSection(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // Reset cache when switching player/team so reopen fetches correct log
   useEffect(() => {
     setRows(null)
     setError(null)
   }, [props.kind === 'player' ? props.athleteId : props.teamId])
 
-  const total =
+  const weeklyTotal =
     rows?.reduce((sum, r) => sum + (Number.isFinite(r.fantasyPts) ? r.fantasyPts : 0), 0) ?? 0
+  const total = Math.round((weeklyTotal + extrasPts) * 10) / 10
 
   return (
     <div className="mb-4">
@@ -124,6 +149,19 @@ export function GameLogSection(props: Props) {
                   </li>
                 ))}
               </ul>
+              {extrasPts !== 0 && (
+                <div className="grid grid-cols-3 gap-0 px-3 py-2 border-t border-slate-800/80 text-sm">
+                  <span className="text-slate-500 col-span-2">
+                    FF / blocks / returns
+                    <span className="block text-[10px] text-slate-600">
+                      Season stats not on weekly ESPN team box score
+                    </span>
+                  </span>
+                  <span className="text-right tabular-nums text-slate-300">
+                    {extrasPts.toFixed(1)}
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-0 px-3 py-2.5 bg-slate-900/60 border-t border-slate-800 text-sm">
                 <span className="text-slate-500">Total</span>
                 <span />
@@ -134,7 +172,7 @@ export function GameLogSection(props: Props) {
               <p className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-800/80">
                 Points use your current scoring settings
                 {props.kind === 'dst'
-                  ? ' (PA/YA brackets + sacks/INT/FR/TD applied per game from live ESPN box scores).'
+                  ? '. Weekly lines = live box score (PA/YA, sacks, INT, FR, TD). Total adds season FF/blocks so it matches season points.'
                   : '. Loaded on demand from ESPN.'}
               </p>
             </>
