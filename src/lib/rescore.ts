@@ -24,14 +24,16 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
       safe(stats.passTDs) * o.passTD +
       safe(stats.interceptions) * o.int +
       safe(stats.rushYds) * o.rushYd +
-      safe(stats.rushTDs) * o.rushTD
+      safe(stats.rushTDs) * o.rushTD +
+      safe(stats.fumblesLost) * (o.fumLost ?? -2)
   } else if (pos === 'RB' || pos === 'WR' || pos === 'TE') {
     pts +=
       safe(stats.rushYds) * o.rushYd +
       safe(stats.rushTDs) * o.rushTD +
       safe(stats.receptions) * o.rec +
       safe(stats.recYds) * o.recYd +
-      safe(stats.recTDs) * o.recTD
+      safe(stats.recTDs) * o.recTD +
+      safe(stats.fumblesLost) * (o.fumLost ?? -2)
   } else if (pos === 'K') {
     const k = s.kicker
     const st = stats as Record<string, number | undefined>
