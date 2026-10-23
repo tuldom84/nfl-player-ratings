@@ -109,10 +109,10 @@ function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
 }
 
 function gradeLabel(score: number): string {
-  if (score >= 90) return 'Elite'
-  if (score >= 75) return 'Great'
-  if (score >= 55) return 'Solid'
-  if (score >= 35) return 'Average'
+  if (score >= 80) return 'Elite'
+  if (score >= 65) return 'Great'
+  if (score >= 50) return 'Solid'
+  if (score >= 30) return 'Average'
   return 'Below'
 }
 

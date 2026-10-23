@@ -211,10 +211,10 @@ export function parseStats(overview) {
   stats.fgAtt = map.fieldGoalAttempts || 0
   stats.xpMade = map.extraPointsMade || 0
   stats.sacks = map.sacks || 0
-  stats.fumblesLost = 0
+  stats.fumblesLost = map.fumblesLost || map.losingFumbles || 0
+  stats.fumbles = map.fumbles || 0
   if (map.fumblesLost != null) stats.fumblesLost = map.fumblesLost
   else if (map.losingFumbles != null) stats.fumblesLost = map.losingFumbles
-  else if (map.fumbles != null) stats.fumblesLost = map.fumbles
   return stats
 }
 

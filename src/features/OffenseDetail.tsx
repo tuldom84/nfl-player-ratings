@@ -32,7 +32,10 @@ export default function OffenseDetail() {
   const games = Math.max(1, s.gamesPlayed || 1)
 
   const rows: StatRowDef[] = []
-  rows.push({ label: 'Games played', season: games, noRank: true })
+  rows.push({
+    label: 'Games played', season: games, noRank: true,
+    value: undefined
+  })
 
   if (s.pointsPerGame != null) {
     rows.push({

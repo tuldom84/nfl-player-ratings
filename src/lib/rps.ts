@@ -33,10 +33,10 @@ export function nflPasserRating(
 }
 
 function gradeLabel(score: number): string {
-  if (score >= 90) return 'Elite'
-  if (score >= 75) return 'Great'
-  if (score >= 55) return 'Solid'
-  if (score >= 35) return 'Average'
+  if (score >= 80) return 'Elite'
+  if (score >= 65) return 'Great'
+  if (score >= 50) return 'Solid'
+  if (score >= 30) return 'Average'
   return 'Below'
 }
 
@@ -52,6 +52,7 @@ function normalize(values: number[]): number[] {
 export function rawRps(position: Position, stats: PlayerStats, games: number): number {
   const g = Math.max(games, 1)
   const st = stats as Record<string, number | undefined>
+  const fumPg = pg(safe(st.fumblesLost), g)
 
   if (position === 'QB') {
     const att = safe(stats.passAtt)
@@ -69,22 +70,19 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const rushTDpg = pg(safe(stats.rushTDs), g)
     const intPg = pg(ints, g)
     const sackPg = pg(safe(stats.sacks), g) // times sacked
-    // Fumbles not in lake yet — reserved weight 0
-    const fumPg = pg(safe(st.fumblesLost), g)
-
     // Pass TDs worth 3× rush TDs in production component
     const tdProduction = passTDpg * 3 + rushTDpg * 1
 
     // Weights: efficiency (rating/QBR-proxy) dominant, then volume, TDs, negatives
     return (
-      rating * 0.35 + // passer rating stands in for QBR-heavy efficiency
+      rating * 0.4 + // passer rating stands in for QBR-heavy efficiency
       compPct * 0.12 +
       ypa * 8 * 0.1 +
       passYpg * 0.08 +
       tdProduction * 12 +
       rushYpg * 0.06 +
       intPg * -25 + // high negative
-      fumPg * -20 +
+      fumPg * -15 +
       sackPg * -3
     )
   }
@@ -102,8 +100,6 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recYpg = pg(recYds, g)
     const recPg = pg(rec, g)
     const recTDpg = pg(recTD, g)
-    const fumPg = pg(safe(st.fumblesLost), g)
-
     return (
       rushYpg * 0.35 +
       ypc * 8 +
@@ -111,7 +107,7 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
       recYpg * 0.2 +
       recPg * 4 +
       recTDpg * 14 +
-      fumPg * -18
+      fumPg * -15
     )
   }
 
@@ -137,7 +133,8 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
       recPg * 3 +
       tgtPg * 1.5 +
       rushYpg * 0.15 +
-      rushTDpg * 10
+      rushTDpg * 10 +
+      fumPg * -15
     )
   }
 
@@ -151,6 +148,9 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recYpg = pg(recYds, g)
     const recPg = pg(rec, g)
     const tdPg = pg(recTD, g)
+      
+    
+
 
     // TEs: yards + TD + reliability (catch rate) weighted higher than pure volume targets
     return (
@@ -158,7 +158,8 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
       ypr * 3.5 +
       catchRate * 45 +
       tdPg * 24 +
-      recPg * 4
+      recPg * 4 +
+      fumPg * -15
     )
   }
 
@@ -188,7 +189,7 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const xpPg = pg(safe(stats.xpMade), g)
     const missPg = pg(Math.max(0, att - made), g)
 
-    return fgPct * 50 + fgPg * 12 + longPg * 18 + xpPg * 4 + missPg * -15
+    return fgPct * 50 + fgPg * 12 + longPg * 18 + xpPg * 4 + missPg * -15 + fumPg * -18
   }
 
   // DST
@@ -209,7 +210,8 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
       (intPg + frPg) * 18 +
       ffPg * 6 +
       tdPg * 25 +
-      safetyPg * 15
+      safetyPg * 15 
+  
     )
   }
 

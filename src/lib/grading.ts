@@ -107,10 +107,12 @@ export function computeRawPprContribution(stats: PlayerStats, pos: Position): nu
     // Crude points-allowed adjustment (lower is better)
     const pa = safe(s.ptsAllowed)
     if (pa > 0) {
-      if (pa < 14) pts += 7
-      else if (pa < 21) pts += 4
-      else if (pa < 28) pts += 1
-      else if (pa > 35) pts -= 3
+      if (pa < 14) pts += 6
+      else if (pa < 18) pts += 4
+      else if (pa < 22) pts += 2
+      else if (pa < 26) pts += 0
+      else if (pa <= 29.99) pts += -2
+      else if (pa >= 30) pts -= 4
     }
   }
 
@@ -129,10 +131,10 @@ export function normalize(values: number[]): number[] {
 }
 
 export function gradeLabel(score: number): string {
-  if (score >= 90) return 'Elite'
-  if (score >= 75) return 'Great'
-  if (score >= 55) return 'Solid'
-  if (score >= 35) return 'Average'
+  if (score >= 80) return 'Elite'
+  if (score >= 65) return 'Great'
+  if (score >= 50) return 'Solid'
+  if (score >= 30) return 'Average'
   return 'Below'
 }
 
