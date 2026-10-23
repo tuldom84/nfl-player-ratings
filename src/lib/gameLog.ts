@@ -55,13 +55,11 @@ function mapStats(names: string[], values: string[]): Record<string, number> {
   names.forEach((name, i) => {
     const raw = values[i]
     if (raw == null || raw === '-') return
-    // Combined made-att keys
     if (name.includes('-') && String(raw).includes('-')) {
       const { made, att } = parseMadeAtt(raw)
       const [madeKey, attKey] = name.split('-')
       if (madeKey) out[madeKey] = made
       if (attKey) out[attKey] = att
-      // Also store under full name for lookups
       out[name] = made
     } else {
       out[name] = num(raw)
@@ -94,7 +92,6 @@ export function scorePlayerGame(
       (stats.receptions || 0) * off.rec +
       (stats.receivingYards || 0) * off.recYd +
       (stats.receivingTouchdowns || 0) * off.recTD
-    // fumbles lost if present
     if (stats.fumblesLost) pts += stats.fumblesLost * -2
   } else if (position === 'K') {
     const fg0 =
@@ -102,7 +99,6 @@ export function scorePlayerGame(
       (stats.fieldGoalsMade20_29 || 0) +
       (stats.fieldGoalsMade30_39 || 0)
     const fg40 = stats.fieldGoalsMade40_49 || 0
-    // ESPN uses fieldGoalsMade50 for 50+
     const fg50 = stats.fieldGoalsMade50 || stats.fieldGoalsMade50_59 || 0
     const fg60 = stats.fieldGoalsMade60 || 0
     const made = fg0 + fg40 + fg50 + fg60
@@ -215,7 +211,36 @@ export async function fetchPlayerGameLog(
   return rows
 }
 
-/** DST: team schedule + per-game summary boxscore (on demand). */
+type BoxStat = { name?: string; displayValue?: string; value?: number }
+
+function findStat(list: BoxStat[], name: string): string | number | undefined {
+  const hit = list.find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
+  return hit?.value ?? hit?.displayValue
+}
+
+async function fetchSummary(eventId: string, attempt = 0): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${eventId}`
+    )
+    if (!res.ok) {
+      if (attempt < 1) {
+        await new Promise((r) => setTimeout(r, 200))
+        return fetchSummary(eventId, attempt + 1)
+      }
+      return null
+    }
+    return (await res.json()) as Record<string, unknown>
+  } catch {
+    if (attempt < 1) {
+      await new Promise((r) => setTimeout(r, 200))
+      return fetchSummary(eventId, attempt + 1)
+    }
+    return null
+  }
+}
+
+/** DST: team schedule + per-game summary boxscore (on demand only). */
 export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
   const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/schedule?season=${SEASON}`
   const res = await fetch(scheduleUrl)
@@ -239,7 +264,7 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
     const competitors =
       (comp.competitors as Array<{
         homeAway?: string
-        score?: string
+        score?: string | number
         winner?: boolean
         team?: { id?: string; abbreviation?: string }
       }>) || []
@@ -250,7 +275,6 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
     const homeAway: GameLogRow['homeAway'] =
       self.homeAway === 'home' ? 'home' : self.homeAway === 'away' ? 'away' : 'neutral'
 
-    // Pull boxscore for defensive-relevant stats
     let ptsAllowed = num(opp.score)
     let yardsAllowed = 0
     let sacks = 0
@@ -259,63 +283,48 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
     let defTDs = 0
     let safeties = 0
 
-    try {
-      const eventId = String(e.id)
-      const sumRes = await fetch(
-        `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${eventId}`
-      )
-      if (sumRes.ok) {
-        const summary = await sumRes.json()
-        const teams = summary?.boxscore?.teams || []
-        // Opponent offense = yards we allowed
-        const oppBox = teams.find(
-          (t: { team?: { id?: string } }) => String(t.team?.id) === String(opp.team?.id)
-        )
-        const selfBox = teams.find(
-          (t: { team?: { id?: string } }) => String(t.team?.id) === String(teamId)
-        )
-        const oppStats: Array<{ name?: string; displayValue?: string; value?: number }> =
-          oppBox?.statistics || []
-        const selfStats: Array<{ name?: string; displayValue?: string; value?: number }> =
-          selfBox?.statistics || []
+    const eventId = String(e.id)
+    const summary = await fetchSummary(eventId)
+    if (summary) {
+      const teams =
+        ((summary.boxscore as { teams?: Array<{ team?: { id?: string }; statistics?: BoxStat[] }> })
+          ?.teams) || []
+      const oppBox = teams.find((t) => String(t.team?.id) === String(opp.team?.id))
+      const selfBox = teams.find((t) => String(t.team?.id) === String(teamId))
+      const oppStats = oppBox?.statistics || []
+      const selfStats = selfBox?.statistics || []
 
-        const findStat = (
-          list: typeof oppStats,
-          name: string
-        ): string | number | undefined => {
-          const hit = list.find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
-          return hit?.value ?? hit?.displayValue
+      // Opponent offense → what our defense allowed / generated
+      yardsAllowed = num(findStat(oppStats, 'totalYards'))
+      const sackStr = String(findStat(oppStats, 'sacksYardsLost') ?? '')
+      sacks = num(sackStr.split('-')[0])
+      ints = num(findStat(oppStats, 'interceptions'))
+      fumblesRec = num(findStat(oppStats, 'fumblesLost'))
+
+      // Our defensive / ST TDs from boxscore when present
+      defTDs = num(findStat(selfStats, 'defensiveTouchdowns'))
+
+      const plays: Array<{
+        team?: { id?: string }
+        scoringType?: { name?: string }
+        text?: string
+      }> = (summary.scoringPlays as typeof plays) || []
+      for (const p of plays) {
+        if (String(p.team?.id) !== String(teamId)) continue
+        const t = `${p.scoringType?.name || ''} ${p.text || ''}`.toLowerCase()
+        if (t.includes('safety')) safeties += 1
+        // Only bump defTDs from plays if boxscore left it at 0
+        if (
+          defTDs === 0 &&
+          t.includes('touchdown') &&
+          (t.includes('interception') ||
+            t.includes('fumble') ||
+            t.includes('return') ||
+            t.includes('blocked'))
+        ) {
+          defTDs += 1
         }
-
-        yardsAllowed = num(findStat(oppStats, 'totalYards'))
-        // Sacks by our defense ≈ opponent sacksYardsLost "2-12"
-        const sackStr = String(findStat(oppStats, 'sacksYardsLost') ?? '')
-        sacks = num(sackStr.split('-')[0])
-        ints = num(findStat(oppStats, 'interceptions'))
-
-        // Defensive TDs / fumble recoveries are harder; try scoringPlays
-        const plays: Array<{
-          team?: { id?: string }
-          scoringType?: { name?: string }
-          text?: string
-        }> = summary?.scoringPlays || []
-        for (const p of plays) {
-          if (String(p.team?.id) !== String(teamId)) continue
-          const t = (p.scoringType?.name || p.text || '').toLowerCase()
-          if (t.includes('interception') || t.includes('fumble') || t.includes('return')) {
-            if (t.includes('touchdown') || (p.text || '').toLowerCase().includes('touchdown')) {
-              defTDs += 1
-            }
-          }
-          if (t.includes('safety')) safeties += 1
-        }
-
-        // Fumble recoveries: not always in team box; leave 0 if unknown
-        void selfStats
-        void fumblesRec
       }
-    } catch {
-      // keep score-based PA only
     }
 
     rows.push({
@@ -337,8 +346,8 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
       result: self.winner ? 'W' : self.winner === false ? 'L' : undefined,
     })
 
-    // polite spacing between summary calls
-    await new Promise((r) => setTimeout(r, 40))
+    // Spacing between summary calls (client only opens one team at a time)
+    await new Promise((r) => setTimeout(r, 80))
   }
 
   rows.sort((a, b) => a.week - b.week)
