@@ -1,6 +1,6 @@
 /** Client-side re-score of the data lake using user scoring settings. */
 
-import type { DataLake, Player, TeamDefense, Position } from './types'
+import type { DataLake, Player, TeamDefense, Position, DstGameLog } from './types'
 import type { ScoringSettings, BracketRow } from './scoringSettings'
 import { applyValueGrades } from './valueGrade'
 import { applyRps } from './rps'
@@ -61,22 +61,40 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
   return Math.round(pts * 10) / 10
 }
 
+/**
+ * DST fantasy points.
+ * Counting stats (sacks, INTs, …) are season totals.
+ * PA / YA brackets MUST be applied per game — averaging then multiplying
+ * understates variance (e.g. a 0-pt and a 28-pt game ≠ two 14-pt games).
+ */
 function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   const d = s.dst
+  const st = stats as Record<string, number | undefined>
   let pts = 0
   pts += safe(stats.sacks) * d.sack
   pts += safe(stats.ints) * d.int
   pts += safe(stats.fumblesRec) * d.fumRec
-  pts += safe((stats as Record<string, number>).fumblesForced) * d.fumForced
-  pts += safe((stats as Record<string, number>).safeties) * d.safety
+  pts += safe(st.fumblesForced) * d.fumForced
+  pts += safe(st.safeties) * d.safety
+  pts += safe(st.onePtSafeties) * (d.onePtSafety ?? 2)
+  pts += safe(st.twoPtReturns) * (d.twoPtReturn ?? 2)
   pts += safe(stats.defTDs) * d.defTD
-  pts += safe((stats as Record<string, number>).kicksBlocked) * d.blockedKick
+  pts += safe(st.kicksBlocked) * d.blockedKick
 
-  const gp = Math.max(1, safe(stats.gamesPlayed) || 1)
-  const avgPA = safe(stats.ptsAllowed) / gp
-  const avgYA = safe(stats.yardsAllowed) / gp
-  pts += bracketPts(d.pa, avgPA) * gp
-  pts += bracketPts(d.ya, avgYA) * gp
+  const logs = (stats.gameLogs || []) as DstGameLog[]
+  if (logs.length > 0) {
+    for (const g of logs) {
+      pts += bracketPts(d.pa, safe(g.ptsAllowed))
+      pts += bracketPts(d.ya, safe(g.yardsAllowed))
+    }
+  } else {
+    // Fallback only when sync did not store per-game logs
+    const gp = Math.max(1, safe(stats.gamesPlayed) || 1)
+    const avgPA = safe(stats.ptsAllowed) / gp
+    const avgYA = safe(stats.yardsAllowed) / gp
+    pts += bracketPts(d.pa, avgPA) * gp
+    pts += bracketPts(d.ya, avgYA) * gp
+  }
   return Math.round(pts * 10) / 10
 }
 
@@ -188,7 +206,10 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
 
   const defenses: TeamDefense[] = lake.defenses.map((d) => {
     const seasonPts = scoreDst(d.stats, settings)
-    const games = Math.max(1, d.stats.gamesPlayed || d.fantasy?.games || 1)
+    const games = Math.max(
+      1,
+      d.stats.gameLogs?.length || d.stats.gamesPlayed || d.fantasy?.games || 1
+    )
     const avgPts = Math.round((seasonPts / games) * 10) / 10
     const homeAway = d.fantasy?.homeAway
     let projectedPts = avgPts
