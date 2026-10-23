@@ -5,6 +5,8 @@ import {
   loadScoringSettings,
   saveScoringSettings,
   presetSettings,
+  PA_BRACKET_LABELS,
+  YA_BRACKET_LABELS,
 } from '../lib/scoringSettings'
 
 type Section = 'offense' | 'kicker' | 'dst'
@@ -31,6 +33,37 @@ function NumField({
         className="w-24 px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500"
       />
     </label>
+  )
+}
+
+function BracketList({
+  title,
+  labels,
+  rows,
+}: {
+  title: string
+  labels: string[]
+  rows: { max: number; pts: number }[]
+}) {
+  return (
+    <div className="py-2 border-b border-slate-800 last:border-0">
+      <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1.5">{title}</div>
+      <ul className="space-y-1">
+        {rows.map((r, i) => (
+          <li
+            key={i}
+            className={`flex items-center justify-between text-sm px-2 py-1.5 rounded-lg ${
+              r.pts === 0 ? 'text-slate-500 bg-slate-950/40' : 'text-slate-200 bg-slate-800/40'
+            }`}
+          >
+            <span>{labels[i] || `≤ ${r.max}`}</span>
+            <span className="tabular-nums text-sky-300">
+              {r.pts > 0 ? `+${r.pts}` : r.pts} pts
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -75,7 +108,6 @@ export default function Settings() {
         Scoring rules apply instantly to grades, averages, and projections. Saved on this device.
       </p>
 
-      {/* Preset tabs */}
       <div className="flex gap-2 mb-4">
         {(
           [
@@ -111,7 +143,6 @@ export default function Settings() {
         {draft.preset === 'custom' && 'Custom rules — edit any values below'}
       </p>
 
-      {/* Section tabs */}
       <div className="flex gap-2 mb-3 text-xs overflow-x-auto">
         {(
           [
@@ -290,6 +321,22 @@ export default function Settings() {
               onChange={(n) => setDraft((p) => markCustom({ ...p, dst: { ...p.dst, safety: n } }))}
             />
             <NumField
+              label="1pt safety"
+              value={d.onePtSafety ?? 2}
+              step={1}
+              onChange={(n) =>
+                setDraft((p) => markCustom({ ...p, dst: { ...p.dst, onePtSafety: n } }))
+              }
+            />
+            <NumField
+              label="2pt return"
+              value={d.twoPtReturn ?? 2}
+              step={1}
+              onChange={(n) =>
+                setDraft((p) => markCustom({ ...p, dst: { ...p.dst, twoPtReturn: n } }))
+              }
+            />
+            <NumField
               label="Def / return TD"
               value={d.defTD}
               step={1}
@@ -303,9 +350,11 @@ export default function Settings() {
                 setDraft((p) => markCustom({ ...p, dst: { ...p.dst, blockedKick: n } }))
               }
             />
+            <BracketList title="Points allowed (per game)" labels={PA_BRACKET_LABELS} rows={d.pa} />
+            <BracketList title="Yards allowed (per game)" labels={YA_BRACKET_LABELS} rows={d.ya} />
             <p className="text-[11px] text-slate-500 py-2">
-              Points / yards allowed brackets use your league defaults (editable in a future
-              update). Counting stats above apply immediately.
+              PA/YA brackets match your league defaults and are applied <strong>per game</strong>{' '}
+              (not as season averages). Gray rows are 0-pt bands (disabled tiers in league).
             </p>
           </>
         )}
