@@ -5,8 +5,11 @@ on:
     - cron: '0 10 * * 2'
   workflow_dispatch:
 
+# contents: write — commit public/data
+# actions: write — dispatch Deploy to GitHub Pages (bot pushes do not trigger other workflows)
 permissions:
   contents: write
+  actions: write
 
 jobs:
   sync:
@@ -22,15 +25,32 @@ jobs:
         run: node scripts/sync-data.mjs
 
       - name: Commit updated data lake
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/data/
           if git diff --cached --quiet; then
             echo "No data changes to commit"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
           else
             git commit -m "chore: weekly ESPN data lake sync $(date -u +%Y-%m-%d)"
             git pull --rebase origin main || true
             git push origin HEAD:main
-            echo "Pushed data lake — Deploy to GitHub Pages should run on this push"
+            echo "Pushed data lake"
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # GITHUB_TOKEN pushes do not fire on.push workflows — kick deploy explicitly
+      - name: Deploy GitHub Pages
+        if: steps.commit.outputs.pushed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-pages.yml',
+              ref: 'main',
+            })
+            console.log('Triggered deploy-pages.yml on main')
