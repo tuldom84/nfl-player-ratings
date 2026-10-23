@@ -62,40 +62,18 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
 }
 
 /**
- * DST fantasy points.
- * Prefer full per-game logs (sacks/INT/FR/TD + PA/YA) when present.
- * Otherwise: season counting totals + PA/YA brackets per game.
+ * DST fantasy points — single formula for season totals:
+ *   season counting stats (sacks, INT, FR, FF, TD, safety, blocks, …)
+ * + PA bracket per completed game (from gameLogs when present)
+ * + YA bracket per game only when yardsAllowed is a real value (> 0)
+ *
+ * Do NOT sum incomplete per-game counting fields from the lake (often 0 from
+ * failed boxscore pulls) — that under-counts sacks and mis-applies YA=0 as +5.
  */
-function scoreDstGameLog(g: DstGameLog, d: ScoringSettings['dst']): number {
-  let pts = 0
-  pts += safe(g.sacks) * d.sack
-  pts += safe(g.ints) * d.int
-  pts += safe(g.fumblesRec) * d.fumRec
-  pts += safe(g.safeties) * d.safety
-  pts += safe(g.defTDs) * d.defTD
-  if (g.ptsAllowed != null) pts += bracketPts(d.pa, safe(g.ptsAllowed))
-  if (g.yardsAllowed != null) pts += bracketPts(d.ya, safe(g.yardsAllowed))
-  return pts
-}
-
 function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   const d = s.dst
   const st = stats as Record<string, number | undefined>
   const logs = (stats.gameLogs || []) as DstGameLog[]
-  const hasPerGameCounting = logs.some(
-    (g) => g.sacks != null || g.ints != null || g.fumblesRec != null || g.defTDs != null
-  )
-
-  if (logs.length && hasPerGameCounting) {
-    let pts = 0
-    for (const g of logs) pts += scoreDstGameLog(g, d)
-    // Season-only leftovers not on the boxscore game line
-    pts += safe(st.fumblesForced) * d.fumForced
-    pts += safe(st.onePtSafeties) * (d.onePtSafety ?? 2)
-    pts += safe(st.twoPtReturns) * (d.twoPtReturn ?? 2)
-    pts += safe(st.kicksBlocked) * d.blockedKick
-    return Math.round(pts * 10) / 10
-  }
 
   let pts = 0
   pts += safe(stats.sacks) * d.sack
@@ -110,15 +88,21 @@ function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
 
   if (logs.length > 0) {
     for (const g of logs) {
-      pts += bracketPts(d.pa, safe(g.ptsAllowed))
-      pts += bracketPts(d.ya, safe(g.yardsAllowed))
+      if (g.ptsAllowed != null) pts += bracketPts(d.pa, safe(g.ptsAllowed))
+      // yardsAllowed === 0 means missing data in lake, not a shutout in yards
+      const ya = g.yardsAllowed
+      if (ya != null && ya > 0) pts += bracketPts(d.ya, ya)
     }
   } else {
     const gp = Math.max(1, safe(stats.gamesPlayed) || 1)
-    const avgPA = safe(stats.ptsAllowed) / gp
-    const avgYA = safe(stats.yardsAllowed) / gp
-    pts += bracketPts(d.pa, avgPA) * gp
-    pts += bracketPts(d.ya, avgYA) * gp
+    const totalYA = safe(stats.yardsAllowed)
+    const totalPA = safe(stats.ptsAllowed)
+    if (totalPA > 0 || logs.length === 0) {
+      pts += bracketPts(d.pa, totalPA / gp) * gp
+    }
+    if (totalYA > 0) {
+      pts += bracketPts(d.ya, totalYA / gp) * gp
+    }
   }
   return Math.round(pts * 10) / 10
 }
