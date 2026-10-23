@@ -25,8 +25,8 @@ function scoreDstExtras(extras: DstSeasonExtras | undefined): number {
   let pts = 0
   pts += (extras.fumblesForced || 0) * d.fumForced
   pts += (extras.kicksBlocked || 0) * d.blockedKick
-  pts += (extras.onePtSafeties || 0) * (d.onePtSafety ?? 2)
-  pts += (extras.twoPtReturns || 0) * (d.twoPtReturn ?? 2)
+  pts += (extras.onePtSafeties || 0) * d.onePtSafety
+  pts += (extras.twoPtReturns || 0) * d.twoPtReturn
   return Math.round(pts * 10) / 10
 }
 
