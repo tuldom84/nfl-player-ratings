@@ -142,9 +142,20 @@ export function loadScoringSettings(): ScoringSettings {
     // Ensure PA/YA brackets always exist (older saves may omit them)
     if (!Array.isArray(parsed.dst.pa) || !parsed.dst.pa.length) {
       parsed.dst.pa = DEFAULT_DST.pa.map((r) => ({ ...r }))
+    } else {
+      // JSON.stringify turns Infinity into null — restore open-ended max
+      parsed.dst.pa = parsed.dst.pa.map((r) => ({
+        max: r.max == null || Number.isNaN(Number(r.max)) ? Infinity : Number(r.max),
+        pts: Number(r.pts),
+      }))
     }
     if (!Array.isArray(parsed.dst.ya) || !parsed.dst.ya.length) {
       parsed.dst.ya = DEFAULT_DST.ya.map((r) => ({ ...r }))
+    } else {
+      parsed.dst.ya = parsed.dst.ya.map((r) => ({
+        max: r.max == null || Number.isNaN(Number(r.max)) ? Infinity : Number(r.max),
+        pts: Number(r.pts),
+      }))
     }
     if (parsed.dst.onePtSafety == null) parsed.dst.onePtSafety = DEFAULT_DST.onePtSafety
     if (parsed.dst.twoPtReturn == null) parsed.dst.twoPtReturn = DEFAULT_DST.twoPtReturn
