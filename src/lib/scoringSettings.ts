@@ -37,7 +37,9 @@ export interface DstScoring {
   twoPtReturn: number
   defTD: number
   blockedKick: number
+  /** Points-allowed brackets (per game). First matching max wins. */
   pa: BracketRow[]
+  /** Yards-allowed brackets (per game). First matching max wins. */
   ya: BracketRow[]
 }
 
@@ -76,6 +78,12 @@ export const DEFAULT_KICKER: KickerScoring = {
   fg60: 6,
 }
 
+/**
+ * League defaults from ESPN scoring settings screenshots:
+ * PA: 0→5, 1-6→4, 7-13→3, 14-17→1, 18-27→0 (off), 28-34→-1, 35-45→-3, 46+→-5
+ * YA: <100→5, 100-199→3, 200-299→2, 300-399→0 (off), 400-449→-2, 450-499→-3, 500-549→-4, 550+→-5
+ * 2pt return 2, 1pt safety 2
+ */
 export const DEFAULT_DST: DstScoring = {
   sack: 1,
   int: 2,
@@ -91,20 +99,20 @@ export const DEFAULT_DST: DstScoring = {
     { max: 6, pts: 4 },
     { max: 13, pts: 3 },
     { max: 17, pts: 1 },
-    { max: 27, pts: 0 },
+    { max: 27, pts: 0 }, // 18–27 disabled in league → 0
     { max: 34, pts: -1 },
     { max: 45, pts: -3 },
-    { max: Infinity, pts: -5 },
+    { max: Infinity, pts: -5 }, // 46+
   ],
   ya: [
-    { max: 99, pts: 5 },
+    { max: 99, pts: 5 }, // less than 100
     { max: 199, pts: 3 },
     { max: 299, pts: 2 },
-    { max: 399, pts: 0 },
+    { max: 399, pts: 0 }, // 300–399 disabled in league → 0
     { max: 449, pts: -2 },
     { max: 499, pts: -3 },
     { max: 549, pts: -4 },
-    { max: Infinity, pts: -5 },
+    { max: Infinity, pts: -5 }, // 550+
   ],
 }
 
@@ -131,6 +139,15 @@ export function loadScoringSettings(): ScoringSettings {
     if (!raw) return defaultSettings()
     const parsed = JSON.parse(raw) as ScoringSettings
     if (!parsed?.offense || !parsed?.kicker || !parsed?.dst) return defaultSettings()
+    // Ensure PA/YA brackets always exist (older saves may omit them)
+    if (!Array.isArray(parsed.dst.pa) || !parsed.dst.pa.length) {
+      parsed.dst.pa = DEFAULT_DST.pa.map((r) => ({ ...r }))
+    }
+    if (!Array.isArray(parsed.dst.ya) || !parsed.dst.ya.length) {
+      parsed.dst.ya = DEFAULT_DST.ya.map((r) => ({ ...r }))
+    }
+    if (parsed.dst.onePtSafety == null) parsed.dst.onePtSafety = DEFAULT_DST.onePtSafety
+    if (parsed.dst.twoPtReturn == null) parsed.dst.twoPtReturn = DEFAULT_DST.twoPtReturn
     return parsed
   } catch {
     return defaultSettings()
@@ -145,3 +162,26 @@ export function saveScoringSettings(settings: ScoringSettings): void {
 export function notifyScoringChange(): void {
   window.dispatchEvent(new CustomEvent(SCORING_CHANGE_EVENT))
 }
+
+/** Human labels for PA brackets matching league UI. */
+export const PA_BRACKET_LABELS = [
+  '0 points allowed',
+  '1–6 points allowed',
+  '7–13 points allowed',
+  '14–17 points allowed',
+  '18–27 points allowed',
+  '28–34 points allowed',
+  '35–45 points allowed',
+  '46+ points allowed',
+]
+
+export const YA_BRACKET_LABELS = [
+  '<100 total yards allowed',
+  '100–199 total yards allowed',
+  '200–299 total yards allowed',
+  '300–399 total yards allowed',
+  '400–449 total yards allowed',
+  '450–499 total yards allowed',
+  '500–549 total yards allowed',
+  '550+ total yards allowed',
+]
