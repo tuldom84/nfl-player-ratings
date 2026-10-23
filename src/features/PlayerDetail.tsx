@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { nflPasserRating } from '../lib/rps'
 import { RankSummary } from '../components/RankSummary'
+import { GameLogSection } from '../components/GameLogSection'
 import {
   withStatRanks,
   rankByField,
@@ -390,6 +391,8 @@ export default function PlayerDetail() {
           {f.injuryDetail}
         </div>
       )}
+
+      <GameLogSection kind="player" athleteId={player.id} position={player.position} />
 
       <h2 className="text-lg font-semibold mb-2">Season stats</h2>
       <p className="text-[11px] text-slate-500 mb-3">
