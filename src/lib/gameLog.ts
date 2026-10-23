@@ -211,11 +211,15 @@ export async function fetchPlayerGameLog(
   return rows
 }
 
-type BoxStat = { name?: string; displayValue?: string; value?: number }
+type BoxStat = { name?: string; displayValue?: string; value?: number | string }
 
 function findStat(list: BoxStat[], name: string): string | number | undefined {
   const hit = list.find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
-  return hit?.value ?? hit?.displayValue
+  if (!hit) return undefined
+  // ESPN often sets value to "-" for yards/sacks while displayValue has the real figure
+  const v = hit.value
+  if (v != null && v !== '-' && !(typeof v === 'string' && v.trim() === '')) return v
+  return hit.displayValue
 }
 
 async function fetchSummary(eventId: string, attempt = 0): Promise<Record<string, unknown> | null> {
