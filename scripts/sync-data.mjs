@@ -31,6 +31,7 @@ import {
   scoreKicker,
   scoreDstSeason,
 } from './sync-lib.mjs'
+import { appendDstGameLogs } from './sync-dst-logs.mjs'
 
 async function teamDefStats(teamId, abbreviation) {
   const stats = {
@@ -109,38 +110,7 @@ async function teamDefStats(teamId, abbreviation) {
   } catch {}
 
   try {
-    const sched = await fetchJson(
-      `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/schedule`
-    )
-    for (const e of sched.events || []) {
-      const c = (e.competitions || [])[0]
-      if (!c || !(c.status || {}).type?.completed) continue
-      const comps = c.competitors || []
-      const self = comps.find(
-        (x) => String(x.team?.id) === String(teamId) || x.team?.abbreviation === abbreviation
-      )
-      const opp = comps.find((x) => x !== self)
-      if (!self || !opp) continue
-      const ptsAllowed = num(opp.score?.value ?? opp.score)
-      let yardsAllowed = 0
-      try {
-        const summary = await fetchJson(
-          `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${e.id}`
-        )
-        for (const t of summary.boxscore?.teams || []) {
-          if (String(t.team?.id) === String(opp.team?.id) || t.team?.abbreviation === opp.team?.abbreviation) {
-            for (const s of t.statistics || []) {
-              if ((s.name || '') === 'totalYards') yardsAllowed = num(s.displayValue ?? s.value)
-            }
-          }
-        }
-      } catch {}
-      stats.gameLogs.push({ eventId: e.id, ptsAllowed, yardsAllowed, opponent: opp.team?.abbreviation })
-      stats.ptsAllowed += ptsAllowed
-      stats.yardsAllowed += yardsAllowed
-      await new Promise((r) => setTimeout(r, 25))
-    }
-    if (stats.gameLogs.length) stats.gamesPlayed = stats.gameLogs.length
+    await appendDstGameLogs(stats, teamId, abbreviation)
   } catch (e) {
     console.warn('schedule', teamId, e.message)
   }
@@ -417,7 +387,7 @@ async function main() {
       season: SEASON,
       week: espnWeek,
       projectionWeek,
-      source: 'ESPN 2026-only GP + full fantasy rosters + rank grades vs pools',
+      source: 'ESPN 2026 GP + full DST per-game logs (PA/YA/sacks/INT/FR/TD) + rank grades',
       playerCount: graded.length,
       dstCount: gDef.length,
       offenseCount: teamOffenses.length,
