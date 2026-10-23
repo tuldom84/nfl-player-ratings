@@ -63,13 +63,40 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
 
 /**
  * DST fantasy points.
- * Counting stats (sacks, INTs, …) are season totals.
- * PA / YA brackets MUST be applied per game — averaging then multiplying
- * understates variance (e.g. a 0-pt and a 28-pt game ≠ two 14-pt games).
+ * Prefer full per-game logs (sacks/INT/FR/TD + PA/YA) when present.
+ * Otherwise: season counting totals + PA/YA brackets per game.
  */
+function scoreDstGameLog(g: DstGameLog, d: ScoringSettings['dst']): number {
+  let pts = 0
+  pts += safe(g.sacks) * d.sack
+  pts += safe(g.ints) * d.int
+  pts += safe(g.fumblesRec) * d.fumRec
+  pts += safe(g.safeties) * d.safety
+  pts += safe(g.defTDs) * d.defTD
+  if (g.ptsAllowed != null) pts += bracketPts(d.pa, safe(g.ptsAllowed))
+  if (g.yardsAllowed != null) pts += bracketPts(d.ya, safe(g.yardsAllowed))
+  return pts
+}
+
 function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   const d = s.dst
   const st = stats as Record<string, number | undefined>
+  const logs = (stats.gameLogs || []) as DstGameLog[]
+  const hasPerGameCounting = logs.some(
+    (g) => g.sacks != null || g.ints != null || g.fumblesRec != null || g.defTDs != null
+  )
+
+  if (logs.length && hasPerGameCounting) {
+    let pts = 0
+    for (const g of logs) pts += scoreDstGameLog(g, d)
+    // Season-only leftovers not on the boxscore game line
+    pts += safe(st.fumblesForced) * d.fumForced
+    pts += safe(st.onePtSafeties) * (d.onePtSafety ?? 2)
+    pts += safe(st.twoPtReturns) * (d.twoPtReturn ?? 2)
+    pts += safe(st.kicksBlocked) * d.blockedKick
+    return Math.round(pts * 10) / 10
+  }
+
   let pts = 0
   pts += safe(stats.sacks) * d.sack
   pts += safe(stats.ints) * d.int
@@ -81,14 +108,12 @@ function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   pts += safe(stats.defTDs) * d.defTD
   pts += safe(st.kicksBlocked) * d.blockedKick
 
-  const logs = (stats.gameLogs || []) as DstGameLog[]
   if (logs.length > 0) {
     for (const g of logs) {
       pts += bracketPts(d.pa, safe(g.ptsAllowed))
       pts += bracketPts(d.ya, safe(g.yardsAllowed))
     }
   } else {
-    // Fallback only when sync did not store per-game logs
     const gp = Math.max(1, safe(stats.gamesPlayed) || 1)
     const avgPA = safe(stats.ptsAllowed) / gp
     const avgYA = safe(stats.yardsAllowed) / gp
@@ -106,11 +131,6 @@ function gradeLabel(score: number): string {
   return 'Below'
 }
 
-/**
- * Value-based 0–100 scale within a group (same approach as RPS).
- * Rank-vs-fixed-pool collapsed elites (e.g. Gibbs 31 PPG and Walker 27 PPG
- * both near 100). Min-max on the metric preserves gaps.
- */
 function valueNormalize(values: number[]): number[] {
   if (!values.length) return []
   const mn = Math.min(...values)
