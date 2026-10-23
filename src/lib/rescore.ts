@@ -15,6 +15,7 @@ function bracketPts(table: BracketRow[], value: number): number {
   return 0
 }
 
+/** All rates come from settings (normalized via loadScoringSettings). */
 function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings): number {
   const o = s.offense
   let pts = 0
@@ -25,7 +26,7 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
       safe(stats.interceptions) * o.int +
       safe(stats.rushYds) * o.rushYd +
       safe(stats.rushTDs) * o.rushTD +
-      safe(stats.fumblesLost) * (o.fumLost ?? -2)
+      safe(stats.fumblesLost) * o.fumLost
   } else if (pos === 'RB' || pos === 'WR' || pos === 'TE') {
     pts +=
       safe(stats.rushYds) * o.rushYd +
@@ -33,7 +34,7 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
       safe(stats.receptions) * o.rec +
       safe(stats.recYds) * o.recYd +
       safe(stats.recTDs) * o.recTD +
-      safe(stats.fumblesLost) * (o.fumLost ?? -2)
+      safe(stats.fumblesLost) * o.fumLost
   } else if (pos === 'K') {
     const k = s.kicker
     const st = stats as Record<string, number | undefined>
@@ -69,8 +70,7 @@ function scorePlayer(stats: Player['stats'], pos: Position, s: ScoringSettings):
  * + PA bracket per completed game (from gameLogs when present)
  * + YA bracket per game only when yardsAllowed is a real value (> 0)
  *
- * Do NOT sum incomplete per-game counting fields from the lake (often 0 from
- * failed boxscore pulls) — that under-counts sacks and mis-applies YA=0 as +5.
+ * All multipliers / brackets come from settings.dst.
  */
 function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   const d = s.dst
@@ -83,15 +83,14 @@ function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
   pts += safe(stats.fumblesRec) * d.fumRec
   pts += safe(st.fumblesForced) * d.fumForced
   pts += safe(st.safeties) * d.safety
-  pts += safe(st.onePtSafeties) * (d.onePtSafety ?? 2)
-  pts += safe(st.twoPtReturns) * (d.twoPtReturn ?? 2)
+  pts += safe(st.onePtSafeties) * d.onePtSafety
+  pts += safe(st.twoPtReturns) * d.twoPtReturn
   pts += safe(stats.defTDs) * d.defTD
   pts += safe(st.kicksBlocked) * d.blockedKick
 
   if (logs.length > 0) {
     for (const g of logs) {
       if (g.ptsAllowed != null) pts += bracketPts(d.pa, safe(g.ptsAllowed))
-      // yardsAllowed === 0 means missing data in lake, not a shutout in yards
       const ya = g.yardsAllowed
       if (ya != null && ya > 0) pts += bracketPts(d.ya, ya)
     }
@@ -170,7 +169,7 @@ function resolveTeamGames(p: Player): number {
   )
 }
 
-/** Recompute fantasy points, grades, RPS, offense RPS, and value grades. */
+/** Recompute fantasy points, grades, RPS, offense RPS, and value grades from user settings. */
 export function applyScoringSettings(lake: DataLake, settings: ScoringSettings): DataLake {
   const players: Player[] = lake.players.map((p) => {
     const seasonPts = scorePlayer(p.stats, p.position, settings)
