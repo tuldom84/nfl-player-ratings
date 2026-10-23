@@ -1,6 +1,7 @@
 /**
  * On-demand ESPN game logs → week / opponent / fantasy points.
  * Fetched only when the user opens the Game Log section (not in weekly sync).
+ * Always scores with the user's current saved scoring settings (loadScoringSettings).
  */
 import type { Position } from './types'
 import {
@@ -30,6 +31,16 @@ function num(v: unknown): number {
   }
   const n = Number(s.replace(/,/g, ''))
   return Number.isFinite(n) ? n : 0
+}
+
+/** ESPN score can be a number, string, or { value, displayValue }. */
+function scoreValue(v: unknown): number {
+  if (v == null) return 0
+  if (typeof v === 'object') {
+    const o = v as { value?: unknown; displayValue?: unknown }
+    return num(o.value ?? o.displayValue)
+  }
+  return num(v)
 }
 
 function parseMadeAtt(v: unknown): { made: number; att: number } {
@@ -246,15 +257,7 @@ async function fetchSummary(eventId: string, attempt = 0): Promise<Record<string
 
 /**
  * DST game log — on demand from schedule + boxscore.
- *
- * Opponent team stats map to our defense:
- *   opp.totalYards      → yards allowed
- *   opp.sacksYardsLost  → sacks (by us)
- *   opp.interceptions   → INTs (by us)
- *   opp.fumblesLost     → fumbles recovered (by us)
- *   opp.score           → points allowed
- * Self team stats:
- *   self.defensiveTouchdowns → def/ST TDs
+ * Scores each week with the user's current PA/YA brackets and counting rates.
  */
 export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
   const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/schedule?season=${SEASON}`
@@ -279,7 +282,7 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
     const competitors =
       (comp.competitors as Array<{
         homeAway?: string
-        score?: string | number
+        score?: string | number | { value?: number | string; displayValue?: string }
         winner?: boolean
         team?: { id?: string; abbreviation?: string }
       }>) || []
@@ -290,7 +293,7 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
     const homeAway: GameLogRow['homeAway'] =
       self.homeAway === 'home' ? 'home' : self.homeAway === 'away' ? 'away' : 'neutral'
 
-    let ptsAllowed = num(opp.score)
+    let ptsAllowed = scoreValue(opp.score)
     let yardsAllowed = 0
     let sacks = 0
     let ints = 0
@@ -309,12 +312,6 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
       const oppStats = oppBox?.statistics || []
       const selfStats = selfBox?.statistics || []
 
-      // Opponent boxscore = what OUR defense did / allowed:
-      //   totalYards → yards allowed
-      //   sacksYardsLost → sacks by us
-      //   interceptions → INTs by us
-      //   fumblesLost → fumbles we recovered (FR)
-      //   turnovers − INTs → FR fallback when fumblesLost missing
       yardsAllowed = num(findStat(oppStats, 'totalYards'))
       const sackStr = String(findStat(oppStats, 'sacksYardsLost') ?? '')
       sacks = num(sackStr.split('-')[0])
@@ -325,7 +322,6 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
         if (oppTO > ints) fumblesRec = oppTO - ints
       }
 
-      // Our defensive / ST TDs from our own boxscore row
       defTDs = num(findStat(selfStats, 'defensiveTouchdowns'))
 
       const plays: Array<{
@@ -337,7 +333,6 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
         if (String(p.team?.id) !== String(teamId)) continue
         const t = `${p.scoringType?.name || ''} ${p.text || ''}`.toLowerCase()
         if (t.includes('safety')) safeties += 1
-        // Only bump defTDs from plays if boxscore left it at 0
         if (
           defTDs === 0 &&
           t.includes('touchdown') &&
@@ -351,6 +346,7 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
       }
     }
 
+    const hasBox = summary != null
     rows.push({
       week,
       opponent: opp.team?.abbreviation || '—',
@@ -363,14 +359,13 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
           safeties,
           defTDs,
           ptsAllowed,
-          yardsAllowed: yardsAllowed || undefined,
+          yardsAllowed: hasBox ? yardsAllowed : undefined,
         },
         settings
       ),
       result: self.winner ? 'W' : self.winner === false ? 'L' : undefined,
     })
 
-    // Spacing between summary calls (client only opens one team at a time)
     await new Promise((r) => setTimeout(r, 80))
   }
 
