@@ -16,6 +16,8 @@ export interface OffenseScoring {
   rec: number
   recYd: number
   recTD: number
+  /** Fumble lost (typically -2). Applied to QB/RB/WR/TE. */
+  fumLost: number
 }
 
 export interface KickerScoring {
@@ -62,6 +64,7 @@ export const PPR_OFFENSE: OffenseScoring = {
   rec: 1,
   recYd: 0.1,
   recTD: 6,
+  fumLost: -2,
 }
 
 export const STANDARD_OFFENSE: OffenseScoring = {
@@ -159,6 +162,7 @@ export function loadScoringSettings(): ScoringSettings {
     }
     if (parsed.dst.onePtSafety == null) parsed.dst.onePtSafety = DEFAULT_DST.onePtSafety
     if (parsed.dst.twoPtReturn == null) parsed.dst.twoPtReturn = DEFAULT_DST.twoPtReturn
+    if (parsed.offense.fumLost == null) parsed.offense.fumLost = PPR_OFFENSE.fumLost
     return parsed
   } catch {
     return defaultSettings()
