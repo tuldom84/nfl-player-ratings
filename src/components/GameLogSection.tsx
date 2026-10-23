@@ -1,55 +1,25 @@
 import { useEffect, useState } from 'react'
-import type { Position, DstGameLog } from '../lib/types'
+import type { Position } from '../lib/types'
 import {
   fetchPlayerGameLog,
   fetchDstGameLog,
-  scoreDstGame,
   type GameLogRow,
 } from '../lib/gameLog'
-import { loadScoringSettings } from '../lib/scoringSettings'
 
 type Props =
   | { kind: 'player'; athleteId: string; position: Position }
-  | { kind: 'dst'; teamId: string; lakeLogs?: DstGameLog[] }
-
-function rowsFromLakeLogs(logs: DstGameLog[]): GameLogRow[] {
-  const settings = loadScoringSettings()
-  return logs.map((g, i) => ({
-    week: g.week && g.week > 0 ? g.week : i + 1,
-    opponent: g.opponent || '—',
-    homeAway: g.homeAway || 'neutral',
-    fantasyPts: scoreDstGame(
-      {
-        sacks: g.sacks,
-        ints: g.ints,
-        fumblesRec: g.fumblesRec,
-        safeties: g.safeties,
-        defTDs: g.defTDs,
-        ptsAllowed: g.ptsAllowed,
-        yardsAllowed: g.yardsAllowed,
-      },
-      settings
-    ),
-  }))
-}
+  | { kind: 'dst'; teamId: string }
 
 export function GameLogSection(props: Props) {
-  const lakeSeed =
-    props.kind === 'dst' && props.lakeLogs && props.lakeLogs.length > 0
-      ? rowsFromLakeLogs(props.lakeLogs)
-      : null
-
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [rows, setRows] = useState<GameLogRow[] | null>(lakeSeed)
+  const [rows, setRows] = useState<GameLogRow[] | null>(null)
 
   useEffect(() => {
     if (!open) return
-    // Player: always fetch on demand
-    // DST: lake seed is enough for PA/YA fantasy pts; still fetch full boxscore log when no seed
-    if (props.kind === 'dst' && rows != null && rows.length > 0) return
-    if (rows != null && props.kind === 'player') return
+    // Already loaded for this open session
+    if (rows != null) return
     if (loading) return
 
     let cancelled = false
@@ -67,10 +37,7 @@ export function GameLogSection(props: Props) {
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          // Keep lake seed if live fetch fails
-          if (!(props.kind === 'dst' && lakeSeed)) {
-            setError(e instanceof Error ? e.message : 'Failed to load game log')
-          }
+          setError(e instanceof Error ? e.message : 'Failed to load game log')
         }
       })
       .finally(() => {
@@ -82,6 +49,12 @@ export function GameLogSection(props: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Reset cache when switching player/team so reopen fetches correct log
+  useEffect(() => {
+    setRows(null)
+    setError(null)
+  }, [props.kind === 'player' ? props.athleteId : props.teamId])
 
   const total =
     rows?.reduce((sum, r) => sum + (Number.isFinite(r.fantasyPts) ? r.fantasyPts : 0), 0) ?? 0
@@ -161,7 +134,7 @@ export function GameLogSection(props: Props) {
               <p className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-800/80">
                 Points use your current scoring settings
                 {props.kind === 'dst'
-                  ? ' (PA/YA brackets applied per game). DST game log uses weekly sync PA/YA; live fetch adds sacks/INTs when available.'
+                  ? ' (PA/YA brackets + sacks/INT/FR/TD applied per game from live ESPN box scores).'
                   : '. Loaded on demand from ESPN.'}
               </p>
             </>
