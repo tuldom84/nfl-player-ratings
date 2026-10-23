@@ -95,7 +95,8 @@ export function scorePlayerGame(
       (stats.passingTouchdowns || 0) * off.passTD +
       (stats.interceptions || 0) * off.int +
       (stats.rushingYards || 0) * off.rushYd +
-      (stats.rushingTouchdowns || 0) * off.rushTD
+      (stats.rushingTouchdowns || 0) * off.rushTD +
+      (stats.fumblesLost || 0) * (off.fumLost ?? -2)
   } else if (position === 'RB' || position === 'WR' || position === 'TE') {
     pts +=
       (stats.rushingYards || 0) * off.rushYd +
@@ -103,7 +104,7 @@ export function scorePlayerGame(
       (stats.receptions || 0) * off.rec +
       (stats.receivingYards || 0) * off.recYd +
       (stats.receivingTouchdowns || 0) * off.recTD
-    if (stats.fumblesLost) pts += stats.fumblesLost * -2
+    if (stats.fumblesLost) pts += stats.fumblesLost * (off.fumLost ?? -2)
   } else if (position === 'K') {
     const fg0 =
       (stats.fieldGoalsMade1_19 || 0) +
@@ -227,7 +228,6 @@ type BoxStat = { name?: string; displayValue?: string; value?: number | string }
 function findStat(list: BoxStat[], name: string): string | number | undefined {
   const hit = list.find((s) => (s.name || '').toLowerCase() === name.toLowerCase())
   if (!hit) return undefined
-  // ESPN often sets value to "-" for yards/sacks while displayValue has the real figure
   const v = hit.value
   if (v != null && v !== '-' && !(typeof v === 'string' && v.trim() === '')) return v
   return hit.displayValue
