@@ -9,6 +9,21 @@ export type InjuryStatus =
   | 'Suspension'
   | 'Unknown'
 
+/** Per-game DST log from weekly sync (PA/YA for bracket scoring). */
+export interface DstGameLog {
+  eventId?: string
+  week?: number
+  ptsAllowed: number
+  yardsAllowed: number
+  opponent?: string
+  homeAway?: 'home' | 'away' | 'neutral'
+  sacks?: number
+  ints?: number
+  fumblesRec?: number
+  defTDs?: number
+  safeties?: number
+}
+
 export interface PlayerStats {
   passYds?: number
   passTDs?: number
@@ -38,6 +53,9 @@ export interface PlayerStats {
   fumblesLost?: number
   fumblesForced?: number
   safeties?: number
+  onePtSafeties?: number
+  twoPtReturns?: number
+  kicksBlocked?: number
   fgMade1_19?: number
   fgMade20_29?: number
   fgMade30_39?: number
@@ -45,6 +63,8 @@ export interface PlayerStats {
   fgMade50_59?: number
   fgMade60?: number
   fgMissed?: number
+  /** DST only — per-game PA/YA for correct bracket scoring */
+  gameLogs?: DstGameLog[]
 }
 
 export interface OffenseStats {
