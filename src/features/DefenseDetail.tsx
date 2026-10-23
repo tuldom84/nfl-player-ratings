@@ -214,7 +214,16 @@ export default function DefenseDetail() {
         </div>
       )}
 
-      <GameLogSection kind="dst" teamId={defense.id} />
+      <GameLogSection
+        kind="dst"
+        teamId={defense.id}
+        seasonExtras={{
+          fumblesForced: s.fumblesForced,
+          kicksBlocked: s.kicksBlocked,
+          onePtSafeties: s.onePtSafeties,
+          twoPtReturns: s.twoPtReturns,
+        }}
+      />
 
       <h2 className="text-lg font-semibold mb-2">Season stats</h2>
       <p className="text-[11px] text-slate-500 mb-3">
