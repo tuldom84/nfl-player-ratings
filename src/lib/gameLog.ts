@@ -244,7 +244,18 @@ async function fetchSummary(eventId: string, attempt = 0): Promise<Record<string
   }
 }
 
-/** DST: team schedule + per-game summary boxscore (on demand only). */
+/**
+ * DST game log — on demand from schedule + boxscore.
+ *
+ * Opponent team stats map to our defense:
+ *   opp.totalYards      → yards allowed
+ *   opp.sacksYardsLost  → sacks (by us)
+ *   opp.interceptions   → INTs (by us)
+ *   opp.fumblesLost     → fumbles recovered (by us)
+ *   opp.score           → points allowed
+ * Self team stats:
+ *   self.defensiveTouchdowns → def/ST TDs
+ */
 export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
   const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${teamId}/schedule?season=${SEASON}`
   const res = await fetch(scheduleUrl)
@@ -298,14 +309,23 @@ export async function fetchDstGameLog(teamId: string): Promise<GameLogRow[]> {
       const oppStats = oppBox?.statistics || []
       const selfStats = selfBox?.statistics || []
 
-      // Opponent offense → what our defense allowed / generated
+      // Opponent boxscore = what OUR defense did / allowed:
+      //   totalYards → yards allowed
+      //   sacksYardsLost → sacks by us
+      //   interceptions → INTs by us
+      //   fumblesLost → fumbles we recovered (FR)
+      //   turnovers − INTs → FR fallback when fumblesLost missing
       yardsAllowed = num(findStat(oppStats, 'totalYards'))
       const sackStr = String(findStat(oppStats, 'sacksYardsLost') ?? '')
       sacks = num(sackStr.split('-')[0])
       ints = num(findStat(oppStats, 'interceptions'))
       fumblesRec = num(findStat(oppStats, 'fumblesLost'))
+      if (!fumblesRec) {
+        const oppTO = num(findStat(oppStats, 'turnovers'))
+        if (oppTO > ints) fumblesRec = oppTO - ints
+      }
 
-      // Our defensive / ST TDs from boxscore when present
+      // Our defensive / ST TDs from our own boxscore row
       defTDs = num(findStat(selfStats, 'defensiveTouchdowns'))
 
       const plays: Array<{
