@@ -136,34 +136,67 @@ export function defaultSettings(): ScoringSettings {
   return presetSettings('ppr')
 }
 
+function fixBrackets(rows: BracketRow[] | undefined, fallback: BracketRow[]): BracketRow[] {
+  if (!Array.isArray(rows) || !rows.length) return fallback.map((r) => ({ ...r }))
+  return rows.map((r) => ({
+    max: r.max == null || Number.isNaN(Number(r.max)) ? Infinity : Number(r.max),
+    pts: Number(r.pts) || 0,
+  }))
+}
+
+/**
+ * Fill any missing fields from defaults so scorers never need hardcoded fallbacks.
+ * User-saved values always win when present.
+ */
+export function normalizeScoringSettings(partial: Partial<ScoringSettings> | null | undefined): ScoringSettings {
+  const base = defaultSettings()
+  if (!partial?.offense || !partial?.kicker || !partial?.dst) return base
+  const o = partial.offense
+  const k = partial.kicker
+  const d = partial.dst
+  return {
+    preset: partial.preset || 'custom',
+    offense: {
+      passYd: o.passYd ?? base.offense.passYd,
+      passTD: o.passTD ?? base.offense.passTD,
+      int: o.int ?? base.offense.int,
+      rushYd: o.rushYd ?? base.offense.rushYd,
+      rushTD: o.rushTD ?? base.offense.rushTD,
+      rec: o.rec ?? base.offense.rec,
+      recYd: o.recYd ?? base.offense.recYd,
+      recTD: o.recTD ?? base.offense.recTD,
+      fumLost: o.fumLost ?? base.offense.fumLost,
+    },
+    kicker: {
+      xpMade: k.xpMade ?? base.kicker.xpMade,
+      fgMiss: k.fgMiss ?? base.kicker.fgMiss,
+      fg0_39: k.fg0_39 ?? base.kicker.fg0_39,
+      fg40_49: k.fg40_49 ?? base.kicker.fg40_49,
+      fg50_59: k.fg50_59 ?? base.kicker.fg50_59,
+      fg60: k.fg60 ?? base.kicker.fg60,
+    },
+    dst: {
+      sack: d.sack ?? base.dst.sack,
+      int: d.int ?? base.dst.int,
+      fumRec: d.fumRec ?? base.dst.fumRec,
+      fumForced: d.fumForced ?? base.dst.fumForced,
+      safety: d.safety ?? base.dst.safety,
+      onePtSafety: d.onePtSafety ?? base.dst.onePtSafety,
+      twoPtReturn: d.twoPtReturn ?? base.dst.twoPtReturn,
+      defTD: d.defTD ?? base.dst.defTD,
+      blockedKick: d.blockedKick ?? base.dst.blockedKick,
+      pa: fixBrackets(d.pa, base.dst.pa),
+      ya: fixBrackets(d.ya, base.dst.ya),
+    },
+  }
+}
+
 export function loadScoringSettings(): ScoringSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return defaultSettings()
     const parsed = JSON.parse(raw) as ScoringSettings
-    if (!parsed?.offense || !parsed?.kicker || !parsed?.dst) return defaultSettings()
-    // Ensure PA/YA brackets always exist (older saves may omit them)
-    if (!Array.isArray(parsed.dst.pa) || !parsed.dst.pa.length) {
-      parsed.dst.pa = DEFAULT_DST.pa.map((r) => ({ ...r }))
-    } else {
-      // JSON.stringify turns Infinity into null — restore open-ended max
-      parsed.dst.pa = parsed.dst.pa.map((r) => ({
-        max: r.max == null || Number.isNaN(Number(r.max)) ? Infinity : Number(r.max),
-        pts: Number(r.pts),
-      }))
-    }
-    if (!Array.isArray(parsed.dst.ya) || !parsed.dst.ya.length) {
-      parsed.dst.ya = DEFAULT_DST.ya.map((r) => ({ ...r }))
-    } else {
-      parsed.dst.ya = parsed.dst.ya.map((r) => ({
-        max: r.max == null || Number.isNaN(Number(r.max)) ? Infinity : Number(r.max),
-        pts: Number(r.pts),
-      }))
-    }
-    if (parsed.dst.onePtSafety == null) parsed.dst.onePtSafety = DEFAULT_DST.onePtSafety
-    if (parsed.dst.twoPtReturn == null) parsed.dst.twoPtReturn = DEFAULT_DST.twoPtReturn
-    if (parsed.offense.fumLost == null) parsed.offense.fumLost = PPR_OFFENSE.fumLost
-    return parsed
+    return normalizeScoringSettings(parsed)
   } catch {
     return defaultSettings()
   }
