@@ -131,7 +131,6 @@ export default function TeamDetail() {
       value: os.totalPoints,
       key: 'totalPoints',
       perGame: pg(os.totalPoints, og),
-      noRank: true,
     })
   if (os.yardsPerGame != null)
     offRows.push({
@@ -148,7 +147,6 @@ export default function TeamDetail() {
       value: os.totalYards,
       key: 'totalYards',
       perGame: pg(os.totalYards, og),
-      noRank: true,
     })
   if (os.passYardsPerGame != null)
     offRows.push({
@@ -388,8 +386,7 @@ export default function TeamDetail() {
 
       <p className="text-xs text-slate-500 leading-relaxed">
         Power ranking = average of offense RPS and defense RPS (real football value, not fantasy).
-        Offense rankings use <strong className="text-slate-400">net yards/game</strong> (not gross
-        total yards).
+        Overall RPS/power use <strong className="text-slate-400">net yards/game</strong>; total yards still show a rank among teams.
       </p>
     </div>
   )
