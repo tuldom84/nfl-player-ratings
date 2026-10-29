@@ -75,9 +75,11 @@ export default function About() {
         Projected game scores for the current week:{' '}
         <strong>
           matchup-adjusted offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2 + 2.5 home
-          field
+          field + a small QB quality boost
         </strong>
-        . Injuries: Out/IR = 0, Questionable = 50%, Doubtful/day-to-day = 25%. Pass/rec TDs
+        , then net turnover differential: (team TOD/g − opponent TOD/g) × 3.5 added to that
+        team and subtracted from the opponent. TOD/g is takeaways per game minus giveaways per
+        game. Injuries: Out/IR = 0, Questionable = 50%, Doubtful/day-to-day = 25%. Pass/rec TDs
         counted once (QB pass + all rush).
       </p>
 

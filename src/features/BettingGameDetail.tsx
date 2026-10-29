@@ -1,10 +1,15 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
-import { getGameDetail, HOME_FIELD_ADVANTAGE, type TeamScoreBreakdown } from '../lib/scoreProjection'
+import { getGameDetail, HOME_FIELD_ADVANTAGE, TO_DIFF_POINT_VALUE, type TeamScoreBreakdown } from '../lib/scoreProjection'
 
 function fmt(n: number, d = 1) {
   return n.toFixed(d)
+}
+
+function fmtSigned(n: number, d = 2) {
+  const s = n.toFixed(d)
+  return n > 0 ? `+${s}` : s
 }
 
 function nearestHalf(n: number): number {
@@ -149,6 +154,18 @@ function ScoreCalcTable({
       a: fmt(away.qbBoost, 2),
       h: fmt(home.qbBoost, 2),
       note: qbNote,
+    },
+    {
+      label: 'TOD/g',
+      a: fmtSigned(away.todPerGame),
+      h: fmtSigned(home.todPerGame),
+      note: 'Net turnover differential per game (takeaways − giveaways)',
+    },
+    {
+      label: `TO diff (×${TO_DIFF_POINT_VALUE})`,
+      a: fmtSigned(away.toAdj),
+      h: fmtSigned(home.toAdj),
+      note: '(own TOD/g − opp TOD/g) × 3.5, added here and subtracted from the opponent',
     },
     {
       label: 'Final score',
@@ -476,6 +493,9 @@ export default function BettingGameDetail() {
         league) scales both adjusted TDs and projected FG made. Missing WR slots contribute 0;
         other missing slots use 75% of league-average TD/game. Injury weights: Out = 0, Q = 50%,
         Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
+        Net TO differential: (own TOD/g − opp TOD/g) × {TO_DIFF_POINT_VALUE} is added to that
+        team and subtracted from the other (total unchanged). TOD/g = (def INT + FR)/g − (off
+        INT + fumbles lost)/g.
       </p>
     </div>
   )

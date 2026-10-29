@@ -50,7 +50,10 @@ export default function Betting() {
         offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2, then{' '}
         <strong className="text-slate-300">+2.5 home-field</strong>, plus a small{' '}
         <strong className="text-slate-300">QB quality boost</strong>{' '}
-        of (RPS/100) × (pass TD/g − INT/g). Injuries: Out/IR = 0, Questionable = 50%,
+        of (RPS/100) × (pass TD/g − INT/g), then{' '}
+        <strong className="text-slate-300">net TO differential</strong>:{' '}
+        (team TOD/g − opponent TOD/g) × 3.5 is added to that team and subtracted from the
+        opponent. TOD/g = takeaways/g − giveaways/g. Injuries: Out/IR = 0, Questionable = 50%,
         Doubtful/day-to-day = 25%. Pass/rec TDs counted once (no double-count of QB pass TDs).
         Spreads shown as traditional favorite line (nearest ½) with model margin in parentheses.
       </div>

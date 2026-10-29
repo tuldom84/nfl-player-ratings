@@ -9,6 +9,14 @@
  *   + home-field advantage (+2.5 for home team)
  *   + QB quality boost: (RPS/100) × max(0, passTD/g − INT/g)
  *     (not injury-weighted)
+ *   + net turnover differential:
+ *       (own TOD/g − opponent TOD/g) × 3.5
+ *     TOD/g = takeaways/g − giveaways/g
+ *       takeaways = defensive INT + fumbles recovered
+ *       giveaways = offensive INT + fumbles lost
+ *     The same amount is added to one team and subtracted from the other
+ *     (game total unchanged). Example: A +1.0, B −0.5 →
+ *     (1 − (−0.5)) × 3.5 = +5.25 to A and −5.25 to B.
  *
  * TD contributors (fixed roster construction):
  *   Best 1 QB + 2 RB + 4 WR + 2 TE per team, sorted by production
@@ -39,9 +47,11 @@
  *   (Injury weights apply to TD/FG/XP contributions, not to QB quality boost.)
  */
 
-import type { DataLake, Player, TeamDefense } from './types'
+import type { DataLake, Player, TeamDefense, TeamOffense } from './types'
 
 export const HOME_FIELD_ADVANTAGE = 2.5
+/** Points per turnover-differential-per-game edge vs the opponent. */
+export const TO_DIFF_POINT_VALUE = 3.5
 
 const SLOT_COUNTS: Record<string, number> = {
   QB: 1,
@@ -209,6 +219,10 @@ export type TeamScoreBreakdown = {
   /** QB quality: (RPS/100)×max(0, passTD/g−INT/g) — not injury-weighted */
   qbBoost: number
   qbName?: string
+  /** Net turnover differential per game (takeaways − giveaways). Positive is good. */
+  todPerGame: number
+  /** Points from (own TOD/g − opp TOD/g) × 3.5. Zero-sum vs the opponent. */
+  toAdj: number
   finalScore: number
   tdFactor: number
   yaFactor: number
@@ -240,6 +254,8 @@ function teamBreakdown(
     baseScore: 0,
     homeField: isHome ? HOME_FIELD_ADVANTAGE : 0,
     qbBoost: 0,
+    todPerGame: 0,
+    toAdj: 0,
     finalScore: isHome ? HOME_FIELD_ADVANTAGE : 0,
     tdFactor: 1,
     yaFactor: 1,
@@ -417,6 +433,8 @@ function teamBreakdown(
     homeField,
     qbBoost: qbBoostR,
     qbName,
+    todPerGame: 0,
+    toAdj: 0,
     finalScore,
     tdFactor: r2(tdF),
     yaFactor: r2(yaF),
@@ -450,6 +468,59 @@ export type GameDetail = ProjectedGame & {
   awayBreakdown: TeamScoreBreakdown
 }
 
+/**
+ * Net turnover differential per game.
+ * Takeaways (def INT + fumbles recovered) minus giveaways (off INT + fumbles lost).
+ * Positive means the team wins the turnover battle.
+ */
+export function turnoverDiffPerGame(
+  offense: TeamOffense | undefined,
+  defense: TeamDefense | undefined
+): number {
+  const o = offense?.stats
+  if (!o) return 0
+  const d = defense?.stats
+  const offG = Math.max(1, o.gamesPlayed || d?.gamesPlayed || 1)
+  const defG = Math.max(1, d?.gamesPlayed || d?.gameLogs?.length || o.gamesPlayed || 1)
+  const givePg = (safe(o.interceptions) + safe(o.fumblesLost)) / offG
+  const takePg = (safe(d?.ints) + safe(d?.fumblesRec)) / defG
+  return takePg - givePg
+}
+
+/**
+ * (own TOD/g − opp TOD/g) × 3.5 added to each final score.
+ * Symmetric: one team's gain is the other's loss, so the total does not move.
+ */
+function applyTurnoverDifferential(
+  home: TeamScoreBreakdown,
+  away: TeamScoreBreakdown,
+  offenses: TeamOffense[] | undefined,
+  defenses: TeamDefense[]
+): { home: TeamScoreBreakdown; away: TeamScoreBreakdown } {
+  const offBy = new Map((offenses || []).map((o) => [o.abbreviation, o]))
+  const defBy = new Map(defenses.map((d) => [d.abbreviation, d]))
+  const homeTod = r2(turnoverDiffPerGame(offBy.get(home.abbr), defBy.get(home.abbr)))
+  const awayTod = r2(turnoverDiffPerGame(offBy.get(away.abbr), defBy.get(away.abbr)))
+  // Use the rounded rates so (shown TOD/g − opp) × 3.5 matches the points row.
+  // Opponent gets the exact negation so the two adjustments always sum to 0.
+  const homePts = r2((homeTod - awayTod) * TO_DIFF_POINT_VALUE)
+  const awayPts = r2(-homePts)
+  return {
+    home: {
+      ...home,
+      todPerGame: homeTod,
+      toAdj: homePts,
+      finalScore: r1(home.finalScore + homePts),
+    },
+    away: {
+      ...away,
+      todPerGame: awayTod,
+      toAdj: awayPts,
+      finalScore: r1(away.finalScore + awayPts),
+    },
+  }
+}
+
 export function projectWeekGames(lake: DataLake): ProjectedGame[] {
   const players = lake.players || []
   const defenses = lake.defenses || []
@@ -471,8 +542,14 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
 
   const out: ProjectedGame[] = []
   for (const { home, away } of games.values()) {
-    const h = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
-    const a = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+    const rawH = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+    const rawA = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+    const { home: h, away: a } = applyTurnoverDifferential(
+      rawH,
+      rawA,
+      lake.teamOffenses,
+      defenses
+    )
     const homeScore = h.finalScore
     const awayScore = a.finalScore
     const winner =
@@ -514,8 +591,14 @@ export function getGameDetail(
   const leagueYa = leagueYaPg(defenses)
   const leagueTdByPos = leagueTdPerGameByPos(players)
 
-  const h = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
-  const a = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+  const rawH = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+  const rawA = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+  const { home: h, away: a } = applyTurnoverDifferential(
+    rawH,
+    rawA,
+    lake.teamOffenses,
+    defenses
+  )
   const homeScore = h.finalScore
   const awayScore = a.finalScore
   const winner =
