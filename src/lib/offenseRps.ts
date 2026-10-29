@@ -10,10 +10,17 @@ function gradeLabel(score: number): string {
   return 'Below'
 }
 
+/** Net yards/game for algorithms — never totalYards / gamesPlayed. */
+export function netYardsPerGame(o: OffenseStats): number {
+  if (o.yardsPerGame != null && o.yardsPerGame > 0) return o.yardsPerGame
+  // Fallback: sum of component rates (still a rate, not gross total / games)
+  return (o.passYardsPerGame || 0) + (o.rushYardsPerGame || 0)
+}
+
 export function rawOffenseRps(o: OffenseStats): number {
   const g = Math.max(1, o.gamesPlayed || 1)
   const ppg = o.pointsPerGame || (o.totalPoints ? o.totalPoints / g : 0)
-  const ypg = o.yardsPerGame || 0
+  const ypg = netYardsPerGame(o)
   const passYpg = o.passYardsPerGame || 0
   const rushYpg = o.rushYardsPerGame || 0
   const tdPg = ((o.totalTDs || 0) || (o.passTDs || 0) + (o.rushTDs || 0)) / g
@@ -59,7 +66,7 @@ export function applyOffenseRps(lake: DataLake): DataLake {
 
   const byAbbr = new Map(teamOffenses.map((o) => [o.abbreviation, o]))
 
-  // Re-apply DST projections from opponent offense when present
+  // Provisional DST notes from RPS; final projections overwrite in applyMatchupProjections
   const defenses = (lake.defenses || []).map((d) => {
     const f = d.fantasy
     if (!f) return d
