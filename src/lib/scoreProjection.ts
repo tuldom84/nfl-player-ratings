@@ -10,13 +10,13 @@
  *   + QB quality boost: (RPS/100) × max(0, passTD/g − INT/g)
  *     (not injury-weighted)
  *   + net turnover differential:
- *       (own TOD/g − opponent TOD/g) × 3.5
+ *       (own TOD/g − opponent TOD/g) × 1.75
  *     TOD/g = takeaways/g − giveaways/g
  *       takeaways = defensive INT + fumbles recovered
  *       giveaways = offensive INT + fumbles lost
  *     The same amount is added to one team and subtracted from the other
  *     (game total unchanged). Example: A +1.0, B −0.5 →
- *     (1 − (−0.5)) × 3.5 = +5.25 to A and −5.25 to B.
+ *     (1 − (−0.5)) × 1.75 = +2.625 to A and −2.625 to B.
  *
  * TD contributors (fixed roster construction):
  *   Best 1 QB + 2 RB + 4 WR + 2 TE per team, sorted by production
@@ -56,7 +56,7 @@ import type { DataLake, Player, TeamDefense, TeamOffense } from './types'
 
 export const HOME_FIELD_ADVANTAGE = 2.5
 /** Points per turnover-differential-per-game edge vs the opponent. */
-export const TO_DIFF_POINT_VALUE = 3.5
+export const TO_DIFF_POINT_VALUE = 1.75
 
 const SLOT_COUNTS: Record<string, number> = {
   QB: 1,
@@ -249,7 +249,7 @@ export type TeamScoreBreakdown = {
   qbName?: string
   /** Net turnover differential per game (takeaways − giveaways). Positive is good. */
   todPerGame: number
-  /** Points from (own TOD/g − opp TOD/g) × 3.5. Zero-sum vs the opponent. */
+  /** Points from (own TOD/g − opp TOD/g) × 1.75. Zero-sum vs the opponent. */
   toAdj: number
   finalScore: number
   tdFactor: number
@@ -524,7 +524,7 @@ export function turnoverDiffPerGame(
 }
 
 /**
- * (own TOD/g − opp TOD/g) × 3.5 added to each final score.
+ * (own TOD/g − opp TOD/g) × 1.75 added to each final score.
  * Symmetric: one team's gain is the other's loss, so the total does not move.
  */
 function applyTurnoverDifferential(
@@ -537,7 +537,7 @@ function applyTurnoverDifferential(
   const defBy = new Map(defenses.map((d) => [d.abbreviation, d]))
   const homeTod = r2(turnoverDiffPerGame(offBy.get(home.abbr), defBy.get(home.abbr)))
   const awayTod = r2(turnoverDiffPerGame(offBy.get(away.abbr), defBy.get(away.abbr)))
-  // Use the rounded rates so (shown TOD/g − opp) × 3.5 matches the points row.
+  // Use the rounded rates so (shown TOD/g − opp) × 1.75 matches the points row.
   // Opponent gets the exact negation so the two adjustments always sum to 0.
   const homePts = r2((homeTod - awayTod) * TO_DIFF_POINT_VALUE)
   const awayPts = r2(-homePts)

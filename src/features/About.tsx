@@ -77,7 +77,7 @@ export default function About() {
           matchup-adjusted offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2 + 2.5 home
           field + a small QB quality boost
         </strong>
-        , then net turnover differential: (team TOD/g − opponent TOD/g) × 3.5 added to that
+        , then net turnover differential: (team TOD/g − opponent TOD/g) × 1.75 added to that
         team and subtracted from the opponent. TOD/g is takeaways per game minus giveaways per
         game. Questionable or day-to-day TDs count at 90%, Doubtful at 70%. Out, IR, and
         suspension are not penalized. RB, WR, and TE TDs/g are multiplied by availability

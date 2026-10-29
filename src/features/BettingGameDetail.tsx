@@ -165,7 +165,7 @@ function ScoreCalcTable({
       label: `TO diff (×${TO_DIFF_POINT_VALUE})`,
       a: fmtSigned(away.toAdj),
       h: fmtSigned(home.toAdj),
-      note: '(own TOD/g − opp TOD/g) × 3.5, added here and subtracted from the opponent',
+      note: '(own TOD/g − opp TOD/g) × 1.75, added here and subtracted from the opponent',
     },
     {
       label: 'Final score',

@@ -52,7 +52,7 @@ export default function Betting() {
         <strong className="text-slate-300">QB quality boost</strong>{' '}
         of (RPS/100) × (pass TD/g − INT/g), then{' '}
         <strong className="text-slate-300">net TO differential</strong>:{' '}
-        (team TOD/g − opponent TOD/g) × 3.5 is added to that team and subtracted from the
+        (team TOD/g − opponent TOD/g) × 1.75 is added to that team and subtracted from the
         opponent. TOD/g = takeaways/g − giveaways/g. Injury on TD/FG rates only:
         Questionable or day-to-day −10%, Doubtful −30%. Out, IR, and suspension are not
         penalized. RB/WR/TE TDs/g are multiplied by availability (games played / team

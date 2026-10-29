@@ -22,8 +22,7 @@ function AboutCornerLink() {
   return (
     <Link
       to="/about"
-      className="fixed top-3 z-40 text-[11px] font-medium text-slate-400 hover:text-emerald-400"
-      style={{ right: 'max(0.75rem, calc((100vw - 32rem) / 2 + 0.75rem))' }}
+      className="text-[11px] font-medium text-slate-400 hover:text-emerald-400"
       aria-label="About"
     >
       About
@@ -34,7 +33,9 @@ function AboutCornerLink() {
 export default function App() {
   return (
     <div className="flex flex-col h-full max-w-lg mx-auto bg-slate-950 relative">
-      <AboutCornerLink />
+      <header className="flex justify-end px-3 py-2">
+        <AboutCornerLink />
+      </header>
       <main className="flex-1 overflow-y-auto scroll-touch pb-20">
         <Routes>
           <Route path="/" element={<Home />} />
@@ -64,13 +65,13 @@ export default function App() {
           <span className="text-base">⚖️</span>
           <span>Compare</span>
         </NavLink>
-        <NavLink to="/settings" className={navCls}>
-          <span className="text-base">⚙️</span>
-          <span>Settings</span>
-        </NavLink>
         <NavLink to="/betting" className={navCls}>
           <span className="text-base">🎯</span>
           <span>Betting</span>
+        </NavLink>
+        <NavLink to="/settings" className={navCls}>
+          <span className="text-base">⚙️</span>
+          <span>Settings</span>
         </NavLink>
       </nav>
     </div>
