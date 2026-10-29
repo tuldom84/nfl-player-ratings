@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { RankSummary } from '../components/RankSummary'
+import { NextMatchupCard, resolveNextMatchup } from '../components/NextMatchup'
 import { withStatRanks, rankByField, type StatRowDef } from '../lib/statRanks'
 
 function pg(total: number | undefined, games: number): number | undefined {
@@ -91,6 +92,10 @@ export default function TeamDetail() {
     [powerList]
   )
 
+  const abbr = offense?.abbreviation || defense?.abbreviation || ''
+  const matchup = useMemo(() => resolveNextMatchup(data, abbr), [data, abbr])
+  const week = data?.meta.projectionWeek || data?.meta.week
+
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
 
   if (!offense && !defense) {
@@ -105,7 +110,6 @@ export default function TeamDetail() {
   }
 
   const name = offense?.name || defense?.name || 'Team'
-  const abbr = offense?.abbreviation || defense?.abbreviation || ''
   const offRps = offense?.rps ?? 0
   const defRps = defense?.rps ?? defense?.grade ?? 0
   const power = Math.round(((offRps + defRps) / 2) * 10) / 10
@@ -287,6 +291,8 @@ export default function TeamDetail() {
         </div>
       </div>
 
+      <NextMatchupCard matchup={matchup} week={week} showBetting />
+
       <RankSummary
         title="Season ranks"
         chips={[
@@ -351,7 +357,7 @@ export default function TeamDetail() {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-6 text-xs">
+      <div className="flex gap-2 mb-6 text-xs flex-wrap">
         {offense && (
           <Link
             to={`/offense/${offense.id}`}
@@ -366,6 +372,14 @@ export default function TeamDetail() {
             className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sky-300"
           >
             Defense only →
+          </Link>
+        )}
+        {matchup?.bettingPath && matchup.homeAway !== 'bye' && (
+          <Link
+            to={matchup.bettingPath}
+            className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-amber-300"
+          >
+            Betting matchup →
           </Link>
         )}
       </div>
