@@ -21,11 +21,11 @@ function AboutCornerLink() {
   return (
     <Link
       to="/about"
-      className="fixed top-3 right-3 z-40 max-w-lg mx-auto text-[11px] font-medium text-slate-400 hover:text-emerald-400 bg-slate-900/90 border border-slate-700 rounded-full px-2.5 py-1 backdrop-blur"
+      className="fixed top-3 z-40 text-[11px] font-medium text-slate-400 hover:text-emerald-400"
       style={{ right: 'max(0.75rem, calc((100vw - 32rem) / 2 + 0.75rem))' }}
       aria-label="About"
     >
-      ℹ️ About
+      About
     </Link>
   )
 }
