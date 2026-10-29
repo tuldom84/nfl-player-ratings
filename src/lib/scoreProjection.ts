@@ -7,7 +7,8 @@
  *   + (projected XP made) × 1
  *   + (projected DST safeties) × 2
  *   + home-field advantage (+2.5 for home team)
- *   + QB quality boost: (RPS/100) × max(0, passTD/g − INT/g) × injury weight
+ *   + QB quality boost: (RPS/100) × max(0, passTD/g − INT/g)
+ *     (not injury-weighted)
  *
  * TD contributors (fixed roster construction):
  *   Best 1 QB + 2 RB + 4 WR + 2 TE per team, sorted by production
@@ -34,6 +35,7 @@
  *   Questionable → 50%
  *   Doubtful / day-to-day → 25%
  *   Active → 100%
+ *   (Injury weights apply to TD/FG/XP contributions, not to QB quality boost.)
  */
 
 import type { DataLake, Player, TeamDefense } from './types'
@@ -164,18 +166,18 @@ function productionKey(p: Player): { tdPg: number; ydsPg: number } {
 
 /**
  * Small quality bump for better QBs — not double-counted TDs.
- * (RPS/100) × max(0, passTD/g − INT/g) × injury weight
+ * (RPS/100) × max(0, passTD/g − INT/g)
+ * Injury weight is intentionally NOT applied.
  * e.g. Lamar RPS 81.1, 1.5 pass TD/g, 0.3 INT/g → 0.811 × 1.2 ≈ 0.97
  */
-function qbQualityBoost(p: Player, inj: number): number {
-  if (inj <= 0) return 0
+function qbQualityBoost(p: Player): number {
   const st = p.stats || {}
   const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
   const passTdPg = pg(safe(st.passTDs), g)
   const intPg = pg(safe(st.interceptions), g)
   const netTdPg = Math.max(0, passTdPg - intPg)
   const rps = typeof p.rps === 'number' && !Number.isNaN(p.rps) ? p.rps : 50
-  return (rps / 100) * netTdPg * inj
+  return (rps / 100) * netTdPg
 }
 
 export type TdContributor = {
@@ -203,7 +205,7 @@ export type TeamScoreBreakdown = {
   safetyPts: number
   baseScore: number
   homeField: number
-  /** QB quality: (RPS/100)×max(0, passTD/g−INT/g)×inj */
+  /** QB quality: (RPS/100)×max(0, passTD/g−INT/g) — not injury-weighted */
   qbBoost: number
   qbName?: string
   finalScore: number
@@ -287,7 +289,8 @@ function teamBreakdown(
       if (pos === 'QB') {
         // Only rush TDs count toward team score (pass TDs already in receivers)
         playerTds = pg(safe(st.rushTDs), g) * inj
-        qbBoost = qbQualityBoost(p, inj)
+        // QB quality boost is not injury-weighted
+        qbBoost = qbQualityBoost(p)
         qbName = p.name
       } else {
         // RB / WR / TE: rush + receiving TDs
