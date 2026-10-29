@@ -3,7 +3,7 @@
  *
  * Team score =
  *   (matchup-adjusted offensive TDs) × 6
- *   + (projected kicker FG made) × 3
+ *   + (projected kicker FG made × TD factor) × 3
  *   + (projected XP made) × 1
  *   + (projected DST safeties) × 2
  *   + home-field advantage (+2.5 for home team)
@@ -21,8 +21,9 @@
  * The small QB boost uses net pass TD rate (pass TD − INT) as a quality
  * signal, not as additional touchdowns on the scoreboard.
  *
- * Matchup TD factor is applied ONCE at team level:
+ * Matchup TD factor (opp points-allowed vs league average) is applied to:
  *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
+ *   projected FG made → fg * tdFactor (defense quality affects FG chances)
  *
  * If a required slot is missing / Out / IR / Suspension:
  *   WR → 0 (no contribution)
@@ -346,7 +347,7 @@ function teamBreakdown(
   // Apply matchup TD factor ONCE at team level
   const tds = rawTds * tdF
 
-  // Kicker (unchanged logic)
+  // Kicker — FG also scaled by TD factor (defense quality / scoring environment)
   const kickers = roster.filter((p) => p.position === 'K')
   let bestFg = 0
   let bestXp = 0
@@ -378,7 +379,8 @@ function teamBreakdown(
         safe(st.fgMade40_49) +
         safe(st.fgMade50_59) +
         safe(st.fgMade60) || safe(st.fgMade)
-    bestFg = pg(fg, g) * clamp(yaF, 0.85, 1.15) * inj
+    // TD factor (opp PA) scales FG opportunities with defense quality
+    bestFg = pg(fg, g) * tdF * inj
     const xpRate = pg(safe(st.xpMade), g) * inj
     bestXp = tds > 0 ? Math.min(xpRate, tds * 1.05) : xpRate
     kickerName = k.name
