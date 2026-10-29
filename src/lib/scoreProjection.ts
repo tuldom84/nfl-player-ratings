@@ -7,6 +7,7 @@
  *   + (projected XP made) × 1
  *   + (projected DST safeties) × 2
  *   + home-field advantage (+2.5 for home team)
+ *   + QB quality boost: (RPS/100) × (pass TDs per game / 2) × injury weight
  *
  * TD contributors (fixed roster construction):
  *   Best 1 QB + 2 RB + 4 WR + 2 TE per team, sorted by production
@@ -16,6 +17,8 @@
  * A pass TD is the same scoring play as the receiver's rec TD —
  * counting both double-counts. Team TDs = rush TDs (any) +
  * receiving TDs (RB/WR/TE only).
+ * The small QB boost uses pass-TD rate only as a quality signal, not as
+ * additional touchdowns on the scoreboard.
  *
  * Matchup TD factor is applied ONCE at team level:
  *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
@@ -24,7 +27,7 @@
  *   WR → 0 (no contribution)
  *   QB / RB / TE → league-average TD/game for that position × 0.75
  *   (matchup factor applied later at team level).
- *   QB placeholder uses rush-TD average only.
+ *   QB placeholder uses rush-TD average only (no RPS boost).
  *
  * Injury weights (betting):
  *   Out / IR / Suspension → 0 (slot becomes missing/placeholder)
@@ -138,7 +141,6 @@ function leagueTdPerGameByPos(players: Player[]): Record<string, number> {
   }
   const out: Record<string, number> = {}
   for (const pos of Object.keys(acc)) {
-    // QB rush TD average is low; use a small fallback
     out[pos] = acc[pos].n ? acc[pos].sum / acc[pos].n : pos === 'QB' ? 0.25 : 0.45
   }
   return out
@@ -158,6 +160,19 @@ function productionKey(p: Player): { tdPg: number; ydsPg: number } {
     tdPg: pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g),
     ydsPg: pg(safe(st.rushYds), g) + pg(safe(st.recYds), g),
   }
+}
+
+/**
+ * Small quality bump for better QBs — not double-counted TDs.
+ * (RPS/100) × (pass TDs per game / 2) × injury weight
+ */
+function qbQualityBoost(p: Player, inj: number): number {
+  if (inj <= 0) return 0
+  const st = p.stats || {}
+  const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
+  const passTdPg = pg(safe(st.passTDs), g)
+  const rps = typeof p.rps === 'number' && !Number.isNaN(p.rps) ? p.rps : 50
+  return (rps / 100) * (passTdPg / 2) * inj
 }
 
 export type TdContributor = {
@@ -185,6 +200,9 @@ export type TeamScoreBreakdown = {
   safetyPts: number
   baseScore: number
   homeField: number
+  /** QB quality: (RPS/100)×(passTD/g÷2)×inj */
+  qbBoost: number
+  qbName?: string
   finalScore: number
   tdFactor: number
   yaFactor: number
@@ -215,6 +233,7 @@ function teamBreakdown(
     safetyPts: 0,
     baseScore: 0,
     homeField: isHome ? HOME_FIELD_ADVANTAGE : 0,
+    qbBoost: 0,
     finalScore: isHome ? HOME_FIELD_ADVANTAGE : 0,
     tdFactor: 1,
     yaFactor: 1,
@@ -239,6 +258,8 @@ function teamBreakdown(
 
   const contributors: TdContributor[] = []
   let rawTds = 0
+  let qbBoost = 0
+  let qbName: string | undefined
 
   for (const pos of ['QB', 'RB', 'WR', 'TE'] as const) {
     const need = SLOT_COUNTS[pos]
@@ -263,6 +284,8 @@ function teamBreakdown(
       if (pos === 'QB') {
         // Only rush TDs count toward team score (pass TDs already in receivers)
         playerTds = pg(safe(st.rushTDs), g) * inj
+        qbBoost = qbQualityBoost(p, inj)
+        qbName = p.name
       } else {
         // RB / WR / TE: rush + receiving TDs
         playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * inj
@@ -306,6 +329,7 @@ function teamBreakdown(
           injuryStatus: 'Placeholder',
           isPlaceholder: true,
         })
+        // Placeholder QB gets no RPS quality boost
       }
       filled++
     }
@@ -365,9 +389,10 @@ function teamBreakdown(
   const tdPts = tds * 6
   const fgPts = bestFg * 3
   const xpPts = bestXp * 1
+  const qbBoostR = r2(qbBoost)
   const baseScore = r1(tdPts + fgPts + xpPts + safetyPts)
   const homeField = isHome ? HOME_FIELD_ADVANTAGE : 0
-  const finalScore = r1(baseScore + homeField)
+  const finalScore = r1(baseScore + homeField + qbBoostR)
 
   return {
     abbr: teamAbbr,
@@ -382,6 +407,8 @@ function teamBreakdown(
     safetyPts: r1(safetyPts),
     baseScore,
     homeField,
+    qbBoost: qbBoostR,
+    qbName,
     finalScore,
     tdFactor: r2(tdF),
     yaFactor: r2(yaF),
