@@ -3,6 +3,28 @@ import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { projectWeekGames } from '../lib/scoreProjection'
 
+/** Nearest half-point (e.g. 5.9 → 6, 5.2 → 5, 5.25 → 5.5). */
+function nearestHalf(n: number): number {
+  return Math.round(n * 2) / 2
+}
+
+/**
+ * Traditional betting line: favorite listed with a minus (points they give),
+ * rounded to nearest half. Actual model margin in parentheses.
+ * e.g. WSH -6(+5.9)
+ */
+function formatSpread(home: string, away: string, homeScore: number, awayScore: number): string {
+  const margin = homeScore - awayScore
+  if (Math.abs(margin) < 0.05) return 'PICK'
+  const fav = margin > 0 ? home : away
+  const actual = Math.abs(margin)
+  const line = nearestHalf(actual)
+  // Avoid -0
+  const lineStr = line === 0 ? 'PICK' : `-${line % 1 === 0 ? line.toFixed(0) : line.toFixed(1)}`
+  if (lineStr === 'PICK') return 'PICK'
+  return `${fav} ${lineStr}(+${actual.toFixed(1)})`
+}
+
 export default function Betting() {
   const { data, loading, error } = useDataLake()
 
@@ -28,7 +50,8 @@ export default function Betting() {
         offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2, then{' '}
         <strong className="text-slate-300">+2.5 home-field</strong>. Injuries: Out/IR = 0,
         Questionable = 50%, Doubtful/day-to-day = 25%. Pass/rec TDs counted once (QB pass +
-        all rush).
+        all rush). Spreads shown as traditional favorite line (nearest ½) with model margin in
+        parentheses.
       </div>
 
       {!games.length && (
@@ -40,6 +63,7 @@ export default function Betting() {
           const homeWin = g.winner === g.home
           const awayWin = g.winner === g.away
           const pick = g.winner === 'TIE' ? 'TIE' : g.winner
+          const spreadLabel = formatSpread(g.home, g.away, g.homeScore, g.awayScore)
           return (
             <li key={`${g.away}@${g.home}`}>
               <Link
@@ -88,13 +112,8 @@ export default function Betting() {
                     </div>
                     <div className="text-[10px] text-slate-500 tabular-nums">
                       O/U {g.total.toFixed(1)}
-                      {g.spread !== 0 && (
-                        <>
-                          {' · '}
-                          {g.home} {g.spread > 0 ? '+' : ''}
-                          {g.spread.toFixed(1)}
-                        </>
-                      )}
+                      {' · '}
+                      <span className="text-slate-400">{spreadLabel}</span>
                     </div>
                   </div>
 
