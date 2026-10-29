@@ -3,6 +3,10 @@
  * Uses per-game averages. Separate weights per position.
  * Availability penalty only if player missed more than 80% of team games.
  *
+ * Efficiency rates (catch %, YPR, YPC, passer rating, FG%) are volume-weighted
+ * so a 1-catch 29-yard TE cannot outscore every starter on rate luck.
+ * Full efficiency weight at position-specific sample thresholds.
+ *
  * Note: ESPN QBR is not in the public data lake; NFL passer rating is computed
  * from completions/attempts/yards/TDs/INTs and weighted as the primary efficiency metric.
  *
@@ -17,6 +21,15 @@ const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 
 function pg(total: number, games: number): number {
   return total / Math.max(games, 1)
+}
+
+/**
+ * Reliability weight for rate stats. 0 with no sample → 1 at `fullAt` opportunities.
+ * e.g. 1 target with fullAt=15 → ~0.067 (almost no efficiency credit).
+ */
+function volWeight(sample: number, fullAt: number): number {
+  if (fullAt <= 0) return 1
+  return Math.min(1, Math.max(0, sample / fullAt))
 }
 
 /** Official NFL passer rating (0–158.3). */
@@ -59,25 +72,24 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const rating = nflPasserRating(cmp, att, pYds, pTD, ints)
     const compPct = att > 0 ? (cmp / att) * 100 : 0
     const ypa = att > 0 ? pYds / att : 0
-    // Per-game rates
+    // Full efficiency weight at ~50 pass attempts (~3–4 full games)
+    const effW = volWeight(att, 50)
     const passYpg = pg(pYds, g)
     const passTDpg = pg(pTD, g)
     const rushYpg = pg(safe(stats.rushYds), g)
     const rushTDpg = pg(safe(stats.rushTDs), g)
     const intPg = pg(ints, g)
-    const sackPg = pg(safe(stats.sacks), g) // times sacked
-    // Pass TDs worth 3× rush TDs in production component
+    const sackPg = pg(safe(stats.sacks), g)
     const tdProduction = passTDpg * 3 + rushTDpg * 1
 
-    // Weights: efficiency (rating/QBR-proxy) dominant, then volume, TDs, negatives
     return (
-      rating * 0.4 + // passer rating stands in for QBR-heavy efficiency
-      compPct * 0.12 +
-      ypa * 8 * 0.1 +
+      rating * 0.4 * effW +
+      compPct * 0.12 * effW +
+      ypa * 8 * 0.1 * effW +
       passYpg * 0.08 +
       tdProduction * 12 +
       rushYpg * 0.06 +
-      intPg * -25 + // high negative
+      intPg * -25 +
       fumPg * -15 +
       sackPg * -3
     )
@@ -91,6 +103,8 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recYds = safe(stats.recYds)
     const recTD = safe(stats.recTDs)
     const ypc = carries > 0 ? rushYds / carries : 0
+    // Full YPC weight at ~40 carries
+    const ypcW = volWeight(carries, 40)
     const rushYpg = pg(rushYds, g)
     const rushTDpg = pg(rushTD, g)
     const recYpg = pg(recYds, g)
@@ -98,7 +112,7 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recTDpg = pg(recTD, g)
     return (
       rushYpg * 0.35 +
-      ypc * 8 +
+      ypc * 8 * ypcW +
       rushTDpg * 18 +
       recYpg * 0.2 +
       recPg * 4 +
@@ -114,6 +128,8 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recTD = safe(stats.recTDs)
     const catchRate = targets > 0 ? rec / targets : 0
     const ypr = rec > 0 ? recYds / rec : 0
+    // Full efficiency weight at ~15 targets
+    const effW = volWeight(targets, 15)
     const recYpg = pg(recYds, g)
     const recPg = pg(rec, g)
     const tgtPg = pg(targets, g)
@@ -123,8 +139,8 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
 
     return (
       recYpg * 0.4 +
-      ypr * 3 +
-      catchRate * 40 +
+      ypr * 3 * effW +
+      catchRate * 40 * effW +
       tdPg * 22 +
       recPg * 3 +
       tgtPg * 1.5 +
@@ -141,15 +157,16 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recTD = safe(stats.recTDs)
     const catchRate = targets > 0 ? rec / targets : 0
     const ypr = rec > 0 ? recYds / rec : 0
+    // Full efficiency weight at ~12 targets (TEs get fewer looks)
+    const effW = volWeight(Math.max(targets, rec), 12)
     const recYpg = pg(recYds, g)
     const recPg = pg(rec, g)
     const tdPg = pg(recTD, g)
 
-    // TEs: yards + TD + reliability (catch rate) weighted higher than pure volume targets
     return (
       recYpg * 0.45 +
-      ypr * 3.5 +
-      catchRate * 45 +
+      ypr * 3.5 * effW +
+      catchRate * 45 * effW +
       tdPg * 24 +
       recPg * 4 +
       fumPg * -15
@@ -157,7 +174,6 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
   }
 
   if (position === 'K') {
-    // Prefer distance-aware made count if buckets exist
     const madeBuckets =
       safe(st.fgMade1_19) +
       safe(st.fgMade20_29) +
@@ -168,13 +184,15 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const made = madeBuckets > 0 ? madeBuckets : safe(stats.fgMade)
     const att = safe(stats.fgAtt) || made
     const fgPct = att > 0 ? made / att : 0
+    // Full FG% weight at ~8 attempts
+    const pctW = volWeight(att, 8)
     const longMade = safe(st.fgMade50_59) + safe(st.fgMade60)
     const fgPg = pg(made, g)
     const longPg = pg(longMade, g)
     const xpPg = pg(safe(stats.xpMade), g)
     const missPg = pg(Math.max(0, att - made), g)
 
-    return fgPct * 50 + fgPg * 12 + longPg * 18 + xpPg * 4 + missPg * -15 + fumPg * -18
+    return fgPct * 50 * pctW + fgPg * 12 + longPg * 18 + xpPg * 4 + missPg * -15 + fumPg * -18
   }
 
   // DST
@@ -187,7 +205,6 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const ffPg = pg(safe(st.fumblesForced), g)
     const tdPg = pg(safe(stats.defTDs), g)
     const safetyPg = pg(safe(st.safeties), g)
-    // Invert allowed stats (lower allowed = higher score)
     return (
       (30 - paPg) * 2.5 +
       (400 - yaPg) * 0.08 +
@@ -240,7 +257,6 @@ export function applyRps(lake: DataLake): DataLake {
 
   lake.defenses.forEach((d, index) => {
     const games = Math.max(1, d.stats.gamesPlayed || d.fantasy?.games || 1)
-    // DST always fully available for RPS
     const raw = rawRps('DST', d.stats, games)
     rows.push({ kind: 'dst', index, position: 'DST', raw })
   })
