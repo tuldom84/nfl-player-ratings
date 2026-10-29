@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { RankSummary } from '../components/RankSummary'
+import { NextMatchupCard, resolveNextMatchup } from '../components/NextMatchup'
 import { withStatRanks, type StatRowDef } from '../lib/statRanks'
 
 function pg(total: number | undefined, games: number): number | undefined {
@@ -14,6 +16,11 @@ export default function OffenseDetail() {
 
   const offense = data?.teamOffenses?.find((o) => o.id === id)
   const peers = data?.teamOffenses || []
+  const matchup = useMemo(
+    () => resolveNextMatchup(data, offense?.abbreviation),
+    [data, offense?.abbreviation]
+  )
+  const week = data?.meta.projectionWeek || data?.meta.week
 
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
 
@@ -192,6 +199,8 @@ export default function OffenseDetail() {
           <p className="text-slate-400">{offense.abbreviation} · Team Offense</p>
         </div>
       </div>
+
+      <NextMatchupCard matchup={matchup} week={week} showBetting />
 
       <RankSummary
         title="Season ranks"
