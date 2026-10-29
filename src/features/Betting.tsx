@@ -24,9 +24,10 @@ export default function Betting() {
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2.5 mb-4 text-[11px] text-slate-400 leading-relaxed">
         <strong className="text-slate-300">Model:</strong> team score = matchup-adjusted
-        offensive TDs × 6 + FG made × 3 + XP made × 1 + DST safeties × 2. TD rates scale
-        with opponent DST points allowed vs league average. Pass/rec TDs counted once
-        (QB pass + all rush). XP from kicker rate (capped near projected TDs).
+        offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2, then{' '}
+        <strong className="text-slate-300">+2.5 home-field</strong>. Injuries: Out/IR = 0,
+        Questionable = 50%, Doubtful/day-to-day = 25%. Pass/rec TDs counted once (QB pass +
+        all rush).
       </div>
 
       {!games.length && (
