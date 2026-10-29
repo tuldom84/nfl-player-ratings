@@ -74,10 +74,11 @@ export default function About() {
       <p className="text-slate-300">
         Projected game scores for the current week:{' '}
         <strong>
-          matchup-adjusted offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2
+          matchup-adjusted offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2 + 2.5 home
+          field
         </strong>
-        . Pass and receiving TDs are counted once (QB pass + all rush). XP uses the kicker's
-        make rate (capped near projected TDs).
+        . Injuries: Out/IR = 0, Questionable = 50%, Doubtful/day-to-day = 25%. Pass/rec TDs
+        counted once (QB pass + all rush).
       </p>
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Data cadence</h2>
