@@ -2,6 +2,7 @@
 
 import type { DataLake, Player, TeamDefense, Position, DstGameLog } from './types'
 import type { ScoringSettings, BracketRow } from './scoringSettings'
+import { gradeLabel } from './grading'
 import { applyValueGrades } from './valueGrade'
 import { applyRps } from './rps'
 import { applyOffenseRps } from './offenseRps'
@@ -107,14 +108,6 @@ function scoreDst(stats: TeamDefense['stats'], s: ScoringSettings): number {
     }
   }
   return Math.round(pts * 10) / 10
-}
-
-function gradeLabel(score: number): string {
-  if (score >= 80) return 'Elite'
-  if (score >= 65) return 'Great'
-  if (score >= 50) return 'Solid'
-  if (score >= 30) return 'Average'
-  return 'Below'
 }
 
 function valueNormalize(values: number[]): number[] {
