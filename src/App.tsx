@@ -6,7 +6,7 @@ import PlayerDetail from './features/PlayerDetail'
 import DefenseDetail from './features/DefenseDetail'
 import OffenseDetail from './features/OffenseDetail'
 import TeamDetail from './features/TeamDetail'
-import About from './features/About'
+import Betting from './features/Betting'
 import Settings from './features/Settings'
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
@@ -27,7 +27,8 @@ export default function App() {
           <Route path="/offense/:id" element={<OffenseDetail />} />
           <Route path="/team/:id" element={<TeamDetail />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/about" element={<About />} />
+          <Route path="/betting" element={<Betting />} />
+          <Route path="/about" element={<Betting />} />
         </Routes>
       </main>
 
@@ -48,9 +49,9 @@ export default function App() {
           <span className="text-base">⚙️</span>
           <span>Settings</span>
         </NavLink>
-        <NavLink to="/about" className={navCls}>
-          <span className="text-base">ℹ️</span>
-          <span>About</span>
+        <NavLink to="/betting" className={navCls}>
+          <span className="text-base">🎯</span>
+          <span>Betting</span>
         </NavLink>
       </nav>
     </div>
