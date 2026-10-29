@@ -404,20 +404,37 @@ export default function BettingGameDetail() {
               {side.contributors.length === 0 && (
                 <li className="px-2 py-2 text-slate-600">No TD share</li>
               )}
-              {side.contributors.slice(0, 10).map((c) => (
-                <li
-                  key={c.id}
-                  className="flex justify-between gap-1 px-2 py-1.5 border-b border-slate-800/60 last:border-0"
-                >
-                  <span className="text-slate-300 truncate">
-                    <span className="text-slate-500">{c.position}</span> {c.name.split(' ').pop()}
-                    {c.injuryWeight < 1 && (
-                      <span className="text-amber-500/90"> · {Math.round(c.injuryWeight * 100)}%</span>
-                    )}
-                  </span>
-                  <span className="tabular-nums text-slate-400 shrink-0">{c.tds.toFixed(2)}</span>
-                </li>
-              ))}
+              {side.contributors.slice(0, 10).map((c) => {
+                const lastName = c.name.split(' ').pop()
+                const isRealPlayer = !c.isPlaceholder
+                return (
+                  <li
+                    key={c.id}
+                    className="flex justify-between gap-1 px-2 py-1.5 border-b border-slate-800/60 last:border-0"
+                  >
+                    <span className="text-slate-300 truncate">
+                      <span className="text-slate-500">{c.position}</span>{' '}
+                      {isRealPlayer ? (
+                        <Link
+                          to={`/player/${c.id}`}
+                          className="text-emerald-400/90 hover:text-emerald-300 hover:underline"
+                        >
+                          {lastName}
+                        </Link>
+                      ) : (
+                        <span className="text-slate-500">{lastName}</span>
+                      )}
+                      {c.injuryWeight < 1 && (
+                        <span className="text-amber-500/90">
+                          {' '}
+                          · {Math.round(c.injuryWeight * 100)}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="tabular-nums text-slate-400 shrink-0">{c.tds.toFixed(2)}</span>
+                  </li>
+                )
+              })}
             </ul>
           </div>
         ))}
