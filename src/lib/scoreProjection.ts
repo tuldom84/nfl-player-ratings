@@ -17,9 +17,12 @@
  * counting both double-counts. Team TDs = rush TDs (any) +
  * receiving TDs (RB/WR/TE only).
  *
+ * Matchup TD factor is applied ONCE at team level:
+ *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
+ *
  * If a required slot is missing / Out / IR / Suspension:
  *   placeholder TD = league-average TD/game for that position × 0.75
- *   (still multiplied by matchup TD factor; same scales/weights).
+ *   (matchup factor applied later at team level).
  *   QB placeholder uses rush-TD average only.
  *
  * Injury weights (betting):
@@ -168,6 +171,9 @@ export type TdContributor = {
 
 export type TeamScoreBreakdown = {
   abbr: string
+  /** Unadjusted sum of player/placeholder TDs (before matchup factor) */
+  rawTds: number
+  /** rawTds * tdFactor */
   tds: number
   tdPts: number
   fg: number
@@ -197,6 +203,7 @@ function teamBreakdown(
 ): TeamScoreBreakdown {
   const empty: TeamScoreBreakdown = {
     abbr: teamAbbr,
+    rawTds: 0,
     tds: 0,
     tdPts: 0,
     fg: 0,
@@ -230,7 +237,7 @@ function teamBreakdown(
   }
 
   const contributors: TdContributor[] = []
-  let tds = 0
+  let rawTds = 0
 
   for (const pos of ['QB', 'RB', 'WR', 'TE'] as const) {
     const need = SLOT_COUNTS[pos]
@@ -254,13 +261,13 @@ function teamBreakdown(
       let playerTds = 0
       if (pos === 'QB') {
         // Only rush TDs count toward team score (pass TDs already in receivers)
-        playerTds = pg(safe(st.rushTDs), g) * tdF * inj
+        playerTds = pg(safe(st.rushTDs), g) * inj
       } else {
         // RB / WR / TE: rush + receiving TDs
-        playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * tdF * inj
+        playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * inj
       }
 
-      tds += playerTds
+      rawTds += playerTds
       contributors.push({
         id: p.id,
         name: p.name,
@@ -274,8 +281,8 @@ function teamBreakdown(
 
     // Fill remaining slots with 75% of league-average (countable) TD/game for the position
     while (filled < need) {
-      const placeholderTd = (leagueTdByPos[pos] || 0.4) * 0.75 * tdF
-      tds += placeholderTd
+      const placeholderTd = (leagueTdByPos[pos] || 0.4) * 0.75
+      rawTds += placeholderTd
       contributors.push({
         id: `${teamAbbr}-${pos}-placeholder-${filled}`,
         name: `${pos} placeholder`,
@@ -290,6 +297,9 @@ function teamBreakdown(
   }
 
   contributors.sort((a, b) => b.tds - a.tds)
+
+  // Apply matchup TD factor ONCE at team level
+  const tds = rawTds * tdF
 
   // Kicker (unchanged logic)
   const kickers = roster.filter((p) => p.position === 'K')
@@ -346,6 +356,7 @@ function teamBreakdown(
 
   return {
     abbr: teamAbbr,
+    rawTds: r2(rawTds),
     tds: r2(tds),
     tdPts: r1(tdPts),
     fg: r2(bestFg),
