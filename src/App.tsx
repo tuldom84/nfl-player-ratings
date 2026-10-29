@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink } from 'react-router-dom'
+import { Routes, Route, NavLink, Link, useLocation } from 'react-router-dom'
 import Home from './features/Home'
 import Rankings from './features/Rankings'
 import Compare from './features/Compare'
@@ -7,6 +7,7 @@ import DefenseDetail from './features/DefenseDetail'
 import OffenseDetail from './features/OffenseDetail'
 import TeamDetail from './features/TeamDetail'
 import Betting from './features/Betting'
+import About from './features/About'
 import Settings from './features/Settings'
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
@@ -14,9 +15,25 @@ const navCls = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
   }`
 
+function AboutCornerLink() {
+  const { pathname } = useLocation()
+  if (pathname === '/about') return null
+  return (
+    <Link
+      to="/about"
+      className="fixed top-3 right-3 z-40 max-w-lg mx-auto text-[11px] font-medium text-slate-400 hover:text-emerald-400 bg-slate-900/90 border border-slate-700 rounded-full px-2.5 py-1 backdrop-blur"
+      style={{ right: 'max(0.75rem, calc((100vw - 32rem) / 2 + 0.75rem))' }}
+      aria-label="About"
+    >
+      ℹ️ About
+    </Link>
+  )
+}
+
 export default function App() {
   return (
-    <div className="flex flex-col h-full max-w-lg mx-auto bg-slate-950">
+    <div className="flex flex-col h-full max-w-lg mx-auto bg-slate-950 relative">
+      <AboutCornerLink />
       <main className="flex-1 overflow-y-auto scroll-touch pb-20">
         <Routes>
           <Route path="/" element={<Home />} />
@@ -28,7 +45,7 @@ export default function App() {
           <Route path="/team/:id" element={<TeamDetail />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/betting" element={<Betting />} />
-          <Route path="/about" element={<Betting />} />
+          <Route path="/about" element={<About />} />
         </Routes>
       </main>
 
