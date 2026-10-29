@@ -362,7 +362,7 @@ export default function BettingGameDetail() {
           />
           <CompareRow
             label="INT / g"
-            away={dsA?.ints != null ? dsA.ints / Math.max(1, dsA.gamesPlayed || gH) : undefined}
+            away={dsA?.ints != null ? dsA.ints / Math.max(1, dsA.gamesPlayed || gA) : undefined}
             home={dsH?.ints != null ? dsH.ints / Math.max(1, dsH.gamesPlayed || gH) : undefined}
             digits={2}
           />
