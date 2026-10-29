@@ -5,9 +5,13 @@
  *
  * Note: ESPN QBR is not in the public data lake; NFL passer rating is computed
  * from completions/attempts/yards/TDs/INTs and weighted as the primary efficiency metric.
+ *
+ * Label bands (shared with pos grade + value):
+ *   80–100 Elite · 65–79 Great · 50–64 Solid · 30–49 Average · <30 Below
  */
 
 import type { DataLake, Position, PlayerStats } from './types'
+import { gradeLabel } from './grading'
 
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 
@@ -30,14 +34,6 @@ export function nflPasserRating(
   const c = clamp((tds / attempts) * 20)
   const d = clamp(2.375 - (ints / attempts) * 25)
   return Math.round(((a + b + c + d) / 6) * 1000) / 10
-}
-
-function gradeLabel(score: number): string {
-  if (score >= 80) return 'Elite'
-  if (score >= 65) return 'Great'
-  if (score >= 50) return 'Solid'
-  if (score >= 30) return 'Average'
-  return 'Below'
 }
 
 function normalize(values: number[]): number[] {
@@ -148,9 +144,6 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
     const recYpg = pg(recYds, g)
     const recPg = pg(rec, g)
     const tdPg = pg(recTD, g)
-      
-    
-
 
     // TEs: yards + TD + reliability (catch rate) weighted higher than pure volume targets
     return (
@@ -202,8 +195,7 @@ export function rawRps(position: Position, stats: PlayerStats, games: number): n
       (intPg + frPg) * 18 +
       ffPg * 6 +
       tdPg * 25 +
-      safetyPg * 15 
-  
+      safetyPg * 15
     )
   }
 
