@@ -1,14 +1,7 @@
 /** Team offense Real Position Score — real football value (not fantasy). */
 
 import type { DataLake, OffenseStats, TeamOffense } from './types'
-
-function gradeLabel(score: number): string {
-  if (score >= 80) return 'Elite'
-  if (score >= 65) return 'Great'
-  if (score >= 50) return 'Solid'
-  if (score >= 30) return 'Average'
-  return 'Below'
-}
+import { gradeLabel } from './grading'
 
 /** Net yards/game for algorithms — never totalYards / gamesPlayed. */
 export function netYardsPerGame(o: OffenseStats): number {
