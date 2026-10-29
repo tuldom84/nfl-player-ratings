@@ -131,10 +131,11 @@ export default function TeamDetail() {
       value: os.totalPoints,
       key: 'totalPoints',
       perGame: pg(os.totalPoints, og),
+      noRank: true,
     })
   if (os.yardsPerGame != null)
     offRows.push({
-      label: 'Yards / game',
+      label: 'Net yards / game',
       season: Math.round(os.yardsPerGame * 10) / 10,
       value: os.yardsPerGame,
       key: 'yardsPerGame',
@@ -142,11 +143,12 @@ export default function TeamDetail() {
     })
   if (os.totalYards)
     offRows.push({
-      label: 'Total yards',
+      label: 'Total yards (gross)',
       season: os.totalYards,
       value: os.totalYards,
       key: 'totalYards',
       perGame: pg(os.totalYards, og),
+      noRank: true,
     })
   if (os.passYardsPerGame != null)
     offRows.push({
@@ -246,12 +248,26 @@ export default function TeamDetail() {
 
   let rankedDef = withStatRanks(
     defRows,
-    allDef.map((d) => ({ stats: d.stats as Record<string, number | undefined> })),
+    allDef.map((d) => ({
+      stats: {
+        ...(d.stats as Record<string, number | undefined>),
+        gamesPlayed:
+          (d.stats as Record<string, number | undefined>).gamesPlayed ||
+          d.fantasy?.gamesPlayed ||
+          d.fantasy?.games ||
+          1,
+      },
+    })),
     allDef.length
   )
   if (ds.sacks != null) {
-    const vals = allDef.map((d) => (d.stats as Record<string, number | undefined>).sacks || 0)
-    const sr = [...vals].sort((a, b) => b - a).indexOf(ds.sacks) + 1
+    const vals = allDef.map((d) => {
+      const st = d.stats as Record<string, number | undefined>
+      const g = Math.max(1, st.gamesPlayed || d.fantasy?.gamesPlayed || d.fantasy?.games || 1)
+      return (st.sacks || 0) / g
+    })
+    const my = (ds.sacks || 0) / dg
+    const sr = [...vals].sort((a, b) => b - a).filter((v) => v > my).length + 1
     rankedDef = rankedDef.map((r) =>
       r.label === 'Sacks' ? { ...r, rank: sr, of: allDef.length } : r
     )
@@ -308,7 +324,7 @@ export default function TeamDetail() {
           },
           {
             title: 'OFF RPS rank',
-            body: 'Team offense real-football value among 32 teams. Drives DST matchup multipliers.',
+            body: 'Team offense real-football value among 32 teams (uses net yards/game). Drives DST matchup multipliers.',
           },
           {
             title: 'DEF rank',
@@ -372,6 +388,8 @@ export default function TeamDetail() {
 
       <p className="text-xs text-slate-500 leading-relaxed">
         Power ranking = average of offense RPS and defense RPS (real football value, not fantasy).
+        Offense rankings use <strong className="text-slate-400">net yards/game</strong> (not gross
+        total yards).
       </p>
     </div>
   )
