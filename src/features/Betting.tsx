@@ -45,8 +45,12 @@ export default function Betting() {
         Week {week} projected scores · tap a game for full breakdown
       </p>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2.5 mb-4 text-[11px] text-slate-400 leading-relaxed">
-        <strong className="text-slate-300">Model:</strong> team score = matchup-adjusted
+      <details className="rounded-xl border border-slate-800 bg-slate-900/50 mb-4 text-[11px] text-slate-400 leading-relaxed">
+        <summary className="cursor-pointer px-3 py-2.5 text-slate-300">
+          <strong>Model:</strong> TD/FG/XP scoring with matchup, QB, and turnover adjustments
+        </summary>
+        <p className="border-t border-slate-800 px-3 py-2.5">
+        Team score = matchup-adjusted
         offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2, then{' '}
         <strong className="text-slate-300">+2.5 home-field</strong>, plus a small{' '}
         <strong className="text-slate-300">QB quality boost</strong>{' '}
@@ -59,7 +63,8 @@ export default function Betting() {
         games). The QB is not — only the 10% (questionable or day-to-day) or 30% (doubtful)
         injury cut. Pass/rec TDs counted once (no double-count of QB pass TDs).
         Spreads shown as traditional favorite line (nearest ½) with model margin in parentheses.
-      </div>
+        </p>
+      </details>
 
       {!games.length && (
         <p className="text-sm text-slate-500 text-center py-8">No games found for this week</p>
