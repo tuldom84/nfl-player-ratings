@@ -55,10 +55,22 @@ function ScoreCalcTable({
 }) {
   const rows: { label: string; a: string; h: string; note?: string }[] = [
     {
-      label: 'Projected TDs',
+      label: 'Raw TDs',
+      a: fmt(away.rawTds, 2),
+      h: fmt(home.rawTds, 2),
+      note: 'Sum of selected player + placeholder TDs (pre-matchup)',
+    },
+    {
+      label: 'TD factor',
+      a: fmt(away.tdFactor, 2),
+      h: fmt(home.tdFactor, 2),
+      note: 'Opponent points-allowed vs league average (clamped 0.70–1.35)',
+    },
+    {
+      label: 'Adjusted TDs',
       a: fmt(away.tds, 2),
       h: fmt(home.tds, 2),
-      note: `× matchup TD factor (away ${away.tdFactor}, home ${home.tdFactor})`,
+      note: 'rawTds × TD factor',
     },
     {
       label: 'TD points (×6)',
@@ -380,7 +392,7 @@ export default function BettingGameDetail() {
 
       {/* TD contributors */}
       <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-2">
-        TD contributors
+        TD contributors (raw)
       </h2>
       <div className="grid grid-cols-2 gap-3 mb-4">
         {([detail.awayBreakdown, detail.homeBreakdown] as const).map((side) => (
@@ -414,9 +426,10 @@ export default function BettingGameDetail() {
       <p className="text-[11px] text-slate-500 leading-relaxed">
         Fixed roster: best 1 QB + 2 RB + 3 WR + 2 TE sorted by production (TDs then yards).
         Team TDs = rush TDs (anyone) + receiving TDs (RB/WR/TE). QB pass TDs are excluded to
-        avoid double-counting the same scoring plays. Missing / Out slots use 75% of
-        league-average (countable) TD/game. Injury weights: Out = 0 (placeholder), Q = 50%,
-        Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
+        avoid double-counting. Matchup TD factor applied once: rawTds × factor → adjusted TDs × 6.
+        Missing / Out slots use 75% of league-average (countable) TD/game. Injury weights: Out = 0
+        (placeholder), Q = 50%, Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to{' '}
+        {home} only.
       </p>
     </div>
   )
