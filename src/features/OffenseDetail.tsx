@@ -33,8 +33,10 @@ export default function OffenseDetail() {
 
   const rows: StatRowDef[] = []
   rows.push({
-    label: 'Games played', season: games, noRank: true,
-    value: undefined
+    label: 'Games played',
+    season: games,
+    noRank: true,
+    value: undefined,
   })
 
   if (s.pointsPerGame != null) {
@@ -52,6 +54,7 @@ export default function OffenseDetail() {
         value: s.totalPoints,
         key: 'totalPoints',
         perGame: pg(s.totalPoints, games),
+        noRank: true, // rankings use rates (PPG)
       })
     }
   } else if (s.totalPoints) {
@@ -61,12 +64,14 @@ export default function OffenseDetail() {
       value: s.totalPoints,
       key: 'totalPoints',
       perGame: pg(s.totalPoints, games),
+      noRank: true,
     })
   }
 
+  // Primary yards metric = ESPN netYardsPerGame (stored as yardsPerGame)
   if (s.yardsPerGame != null) {
     rows.push({
-      label: 'Yards / game',
+      label: 'Net yards / game',
       season: Math.round(s.yardsPerGame * 10) / 10,
       value: s.yardsPerGame,
       key: 'yardsPerGame',
@@ -75,11 +80,12 @@ export default function OffenseDetail() {
   }
   if (s.totalYards) {
     rows.push({
-      label: 'Total yards',
+      label: 'Total yards (gross)',
       season: s.totalYards,
       value: s.totalYards,
       key: 'totalYards',
       perGame: pg(s.totalYards, games),
+      noRank: true, // do not rank on gross totals — use net YPG
     })
   }
   if (s.passYardsPerGame != null) {
@@ -204,7 +210,7 @@ export default function OffenseDetail() {
         breakdown={[
           {
             title: 'Offense RPS rank',
-            body: 'Real-football team offense value among 32 NFL teams. Weights PPG, YPG, TDs, QB rating; penalizes turnovers and sacks allowed. Used to adjust DST weekly projections — not fantasy scoring.',
+            body: 'Real-football team offense value among 32 NFL teams. Weights PPG, net yards/game, TDs, QB rating; penalizes turnovers and sacks allowed. Rankings and scores use net YPG (not gross total yards). Used to adjust DST weekly projections — not fantasy scoring.',
           },
         ]}
       />
@@ -230,7 +236,7 @@ export default function OffenseDetail() {
 
       <h2 className="text-lg font-semibold mb-2">Season stats</h2>
       <p className="text-[11px] text-slate-500 mb-3">
-        Rates and totals with rank among 32 offenses
+        Rates use net yards/game where applicable · rank among 32 offenses
       </p>
 
       <div className="rounded-xl border border-slate-800 overflow-hidden mb-4">
@@ -274,8 +280,10 @@ export default function OffenseDetail() {
       </div>
 
       <p className="mt-4 text-xs text-slate-500 leading-relaxed">
-        Offense RPS weights PPG, YPG, TDs, QB rating, and penalizes turnovers & sacks allowed. Used
-        to adjust <strong className="text-slate-400">DST weekly projections</strong>.
+        Offense RPS weights PPG, <strong className="text-slate-400">net yards/game</strong>, TDs,
+        QB rating, and penalizes turnovers & sacks allowed. Gross total yards are display-only and
+        not used in rankings or scores. Used to adjust{' '}
+        <strong className="text-slate-400">DST weekly projections</strong>.
       </p>
     </div>
   )
