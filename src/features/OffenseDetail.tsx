@@ -54,7 +54,6 @@ export default function OffenseDetail() {
         value: s.totalPoints,
         key: 'totalPoints',
         perGame: pg(s.totalPoints, games),
-        noRank: true, // rankings use rates (PPG)
       })
     }
   } else if (s.totalPoints) {
@@ -64,7 +63,6 @@ export default function OffenseDetail() {
       value: s.totalPoints,
       key: 'totalPoints',
       perGame: pg(s.totalPoints, games),
-      noRank: true,
     })
   }
 
@@ -85,7 +83,7 @@ export default function OffenseDetail() {
       value: s.totalYards,
       key: 'totalYards',
       perGame: pg(s.totalYards, games),
-      noRank: true, // do not rank on gross totals — use net YPG
+      // Rank among teams by season total; overall RPS still uses net YPG
     })
   }
   if (s.passYardsPerGame != null) {
@@ -210,7 +208,7 @@ export default function OffenseDetail() {
         breakdown={[
           {
             title: 'Offense RPS rank',
-            body: 'Real-football team offense value among 32 NFL teams. Weights PPG, net yards/game, TDs, QB rating; penalizes turnovers and sacks allowed. Rankings and scores use net YPG (not gross total yards). Used to adjust DST weekly projections — not fantasy scoring.',
+            body: 'Real-football team offense value among 32 NFL teams. Weights PPG, net yards/game, TDs, QB rating; penalizes turnovers and sacks allowed. Overall RPS uses net YPG; total points/yards still show rank among teams. Used to adjust DST weekly projections — not fantasy scoring.',
           },
         ]}
       />
@@ -281,8 +279,7 @@ export default function OffenseDetail() {
 
       <p className="mt-4 text-xs text-slate-500 leading-relaxed">
         Offense RPS weights PPG, <strong className="text-slate-400">net yards/game</strong>, TDs,
-        QB rating, and penalizes turnovers & sacks allowed. Gross total yards are display-only and
-        not used in rankings or scores. Used to adjust{' '}
+        QB rating, and penalizes turnovers & sacks allowed. Stat ranks for totals are shown; overall RPS uses net yards/game. Used to adjust{' '}
         <strong className="text-slate-400">DST weekly projections</strong>.
       </p>
     </div>
