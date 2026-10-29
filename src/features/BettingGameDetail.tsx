@@ -362,7 +362,7 @@ export default function BettingGameDetail() {
           />
           <CompareRow
             label="INT / g"
-            away={dsA?.ints != null ? dsA.ints / Math.max(1, dsA.gamesPlayed || gA) : undefined}
+            away={dsA?.ints != null ? dsA.ints / Math.max(1, dsA.gamesPlayed || gH) : undefined}
             home={dsH?.ints != null ? dsH.ints / Math.max(1, dsH.gamesPlayed || gH) : undefined}
             digits={2}
           />
@@ -412,7 +412,9 @@ export default function BettingGameDetail() {
       </div>
 
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        Pass TDs counted on QB only; rush TDs on all skill players. Injury weights: Out = 0,
+        Fixed roster: best 1 QB + 2 RB + 3 WR + 2 TE sorted by production (TDs then yards).
+        Pass + rush TDs on QB; rush + receiving TDs on skill players. Missing / Out slots use
+        75% of league-average TD/game for that position. Injury weights: Out = 0 (placeholder),
         Q = 50%, Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
       </p>
     </div>
