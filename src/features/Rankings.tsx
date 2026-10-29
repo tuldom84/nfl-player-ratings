@@ -83,12 +83,12 @@ function rankingsSubtitle(
   }
   if (sortBy === 'pos') {
     if (pos === 'ALL') {
-      return 'Pos grade = fantasy value vs others at the same position (each position ranked separately)'
+      return 'Pos grade = fantasy value vs others at the same position, as if all were healthy (each position ranked separately)'
     }
     if (pos === 'DST') {
-      return 'Pos grade = fantasy value vs all other team defenses'
+      return 'Pos grade = fantasy value vs all other team defenses, as if all were healthy'
     }
-    return `Pos grade = fantasy value vs all other ${pos}s at the position`
+    return `Pos grade = fantasy value vs all other ${pos}s at the position, as if all were healthy`
   }
   if (sortBy === 'value') {
     return 'Value = fantasy value regardless of position (PPG × availability × positional weight)'
