@@ -2,15 +2,16 @@
  * NFL game score projections for the Betting tab.
  *
  * Team score =
- *   (sum of matchup-adjusted offensive TDs) × 6
+ *   (matchup-adjusted offensive TDs) × 6
  *   + (projected kicker FG made) × 3
+ *   + (projected XP made) × 1
+ *   + (projected DST safeties) × 2
  *
  * TD counting avoids double-counting pass/rec TDs:
  *   QB: pass TDs + rush TDs
  *   RB/WR/TE: rush TDs only (receiving TDs = QB pass TDs)
  *
- * TD rates are adjusted by opponent DST points-allowed vs league average
- * (same idea as fantasy matchup projections).
+ * TD rates are adjusted by opponent DST points-allowed vs league average.
  */
 
 import type { DataLake, Player, TeamDefense } from './types'
@@ -49,10 +50,7 @@ function oppPaFactor(opp: TeamDefense | undefined, leaguePa: number): number {
 }
 
 /** Matchup-adjusted TDs that count toward team score (no pass/rec double count). */
-function playerTeamTds(
-  p: Player,
-  tdFactor: number
-): number {
+function playerTeamTds(p: Player, tdFactor: number): number {
   const f = p.fantasy
   const inj = injuryFactor(f?.injuryStatus)
   if (inj === 0) return 0
@@ -68,13 +66,11 @@ function playerTeamTds(
     return (pass + rush) * inj
   }
   if (pos === 'RB' || pos === 'WR' || pos === 'TE') {
-    // Rush only — receiving TDs are already in QB pass TDs for team score
     return pg(safe(st.rushTDs), g) * tdFactor * inj
   }
   return 0
 }
 
-/** Projected field goals made this week for a kicker. */
 function playerProjectedFg(p: Player, yaFactor: number): number {
   if (p.position !== 'K') return 0
   const f = p.fantasy
@@ -92,6 +88,22 @@ function playerProjectedFg(p: Player, yaFactor: number): number {
       safe(st.fgMade50_59) +
       safe(st.fgMade60) || safe(st.fgMade)
   return pg(fg, g) * clamp(yaFactor, 0.85, 1.15) * inj
+}
+
+/** Projected extra points made (1 pt each). Prefer kicker rate; fall back to ~95% of TDs. */
+function playerProjectedXp(p: Player, projectedTds: number): number {
+  if (p.position !== 'K') return 0
+  const f = p.fantasy
+  const inj = injuryFactor(f?.injuryStatus)
+  if (inj === 0) return 0
+  if (f?.homeAway === 'bye') return 0
+
+  const st = p.stats || {}
+  const g = Math.max(1, st.gamesPlayed || f?.gamesPlayed || f?.games || 1)
+  const xpRate = pg(safe(st.xpMade), g) * inj
+  // Cap near projected TDs (can't make more XP than TD attempts on average)
+  if (projectedTds > 0) return Math.min(xpRate, projectedTds * 1.05)
+  return xpRate
 }
 
 function leagueYaPg(defenses: TeamDefense[]): number {
@@ -115,6 +127,17 @@ function oppYaFactor(opp: TeamDefense | undefined, leagueYa: number): number {
   return clamp(ya / Math.max(leagueYa, 1), 0.85, 1.15)
 }
 
+/** Projected safeties from team's DST (2 pts each). Includes 1-pt safety as 1. */
+function projectedSafeties(teamAbbr: string, dstByAbbr: Map<string, TeamDefense>): number {
+  const d = dstByAbbr.get(teamAbbr)
+  if (!d?.stats) return 0
+  const s = d.stats
+  const g = Math.max(1, s.gamesPlayed || s.gameLogs?.length || 1)
+  const two = pg(safe(s.safeties), g)
+  const one = pg(safe(s.onePtSafeties), g)
+  return two + one * 0.5 // 1-pt safety contributes 1 real point → 0.5 × 2-pt units handled in scoring
+}
+
 export type ProjectedGame = {
   home: string
   away: string
@@ -124,8 +147,12 @@ export type ProjectedGame = {
   awayTds: number
   homeFg: number
   awayFg: number
+  homeXp: number
+  awayXp: number
+  homeSafeties: number
+  awaySafeties: number
   winner: string
-  spread: number // home - away (negative = home favorite)
+  spread: number
   total: number
 }
 
@@ -135,11 +162,12 @@ function teamScoreFromPlayers(
   dstByAbbr: Map<string, TeamDefense>,
   leaguePa: number,
   leagueYa: number
-): { score: number; tds: number; fg: number } {
+): { score: number; tds: number; fg: number; xp: number; safeties: number } {
+  const empty = { score: 0, tds: 0, fg: 0, xp: 0, safeties: 0 }
   const roster = players.filter(
     (p) => p.team === teamAbbr && p.fantasy?.homeAway !== 'bye'
   )
-  if (!roster.length) return { score: 0, tds: 0, fg: 0 }
+  if (!roster.length) return empty
 
   const oppAbbr = roster.find((p) => p.fantasy?.opponent)?.fantasy?.opponent
   const oppDst = oppAbbr && oppAbbr !== 'BYE' ? dstByAbbr.get(oppAbbr) : undefined
@@ -152,9 +180,9 @@ function teamScoreFromPlayers(
     tds += playerTeamTds(p, tdF)
   }
 
-  // Best active kicker by season FG total
   const kickers = roster.filter((p) => p.position === 'K')
   let bestFg = 0
+  let bestXp = 0
   let bestMade = -1
   for (const k of kickers) {
     const st = k.stats || {}
@@ -168,21 +196,29 @@ function teamScoreFromPlayers(
     if (made >= bestMade) {
       bestMade = made
       bestFg = playerProjectedFg(k, yaF)
+      bestXp = playerProjectedXp(k, tds)
     }
   }
+  // If no kicker XP rate, assume ~95% of TDs converted
+  if (bestXp <= 0 && tds > 0) bestXp = tds * 0.95
 
-  const score = Math.round((tds * 6 + bestFg * 3) * 10) / 10
+  const safeties = projectedSafeties(teamAbbr, dstByAbbr)
+  // 1-pt safeties: projectedSafeties folds half units; score uses 2× two-pt count + 1× one-pt
+  const d = dstByAbbr.get(teamAbbr)
+  const g = Math.max(1, d?.stats?.gamesPlayed || d?.stats?.gameLogs?.length || 1)
+  const safetyPts =
+    pg(safe(d?.stats?.safeties), g) * 2 + pg(safe(d?.stats?.onePtSafeties), g) * 1
+
+  const score = Math.round((tds * 6 + bestFg * 3 + bestXp * 1 + safetyPts) * 10) / 10
   return {
     score,
     tds: Math.round(tds * 100) / 100,
     fg: Math.round(bestFg * 100) / 100,
+    xp: Math.round(bestXp * 100) / 100,
+    safeties: Math.round(safeties * 100) / 100,
   }
 }
 
-/**
- * Build projected scores for every game implied by current week matchups.
- * Runs client-side when the data lake is loaded (no extra API).
- */
 export function projectWeekGames(lake: DataLake): ProjectedGame[] {
   const players = lake.players || []
   const defenses = lake.defenses || []
@@ -190,7 +226,6 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
   const leaguePa = leaguePaPg(defenses)
   const leagueYa = leagueYaPg(defenses)
 
-  // Unique home/away pairs from player fantasy matchups
   const games = new Map<string, { home: string; away: string }>()
   for (const p of players) {
     const f = p.fantasy
@@ -221,13 +256,16 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
       awayTds: a.tds,
       homeFg: h.fg,
       awayFg: a.fg,
+      homeXp: h.xp,
+      awayXp: a.xp,
+      homeSafeties: h.safeties,
+      awaySafeties: a.safeties,
       winner,
       spread,
       total,
     })
   }
 
-  // Sort by total (high scoring first), then spread magnitude
   out.sort((x, y) => y.total - x.total || Math.abs(y.spread) - Math.abs(x.spread))
   return out
 }
