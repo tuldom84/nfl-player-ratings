@@ -9,7 +9,7 @@
  *   + home-field advantage (+2.5 for home team)
  *
  * TD contributors (fixed roster construction):
- *   Best 1 QB + 2 RB + 3 WR + 2 TE per team, sorted by production
+ *   Best 1 QB + 2 RB + 4 WR + 2 TE per team, sorted by production
  *   (relevant TDs/g then yards/g).
  *
  * Important: do NOT add QB pass TDs into the team total.
@@ -21,12 +21,13 @@
  *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
  *
  * If a required slot is missing / Out / IR / Suspension:
- *   placeholder TD = league-average TD/game for that position × 0.75
+ *   WR → 0 (no contribution)
+ *   QB / RB / TE → league-average TD/game for that position × 0.75
  *   (matchup factor applied later at team level).
  *   QB placeholder uses rush-TD average only.
  *
  * Injury weights (betting):
- *   Out / IR / Suspension → 0 (slot becomes placeholder)
+ *   Out / IR / Suspension → 0 (slot becomes missing/placeholder)
  *   Questionable → 50%
  *   Doubtful / day-to-day → 25%
  *   Active → 100%
@@ -39,7 +40,7 @@ export const HOME_FIELD_ADVANTAGE = 2.5
 const SLOT_COUNTS: Record<string, number> = {
   QB: 1,
   RB: 2,
-  WR: 3,
+  WR: 4,
   TE: 2,
 }
 
@@ -253,7 +254,7 @@ function teamBreakdown(
     let filled = 0
     for (const { p, inj } of candidates) {
       if (filled >= need) break
-      // Fully out → treat as missing slot (placeholder later)
+      // Fully out → treat as missing slot (placeholder / zero later)
       if (inj === 0 || p.fantasy?.homeAway === 'bye') continue
 
       const st = p.stats || {}
@@ -279,19 +280,33 @@ function teamBreakdown(
       filled++
     }
 
-    // Fill remaining slots with 75% of league-average (countable) TD/game for the position
+    // Fill remaining slots:
+    // WR → 0 (no contribution if not found)
+    // QB / RB / TE → 75% of league-average countable TD/game
     while (filled < need) {
-      const placeholderTd = (leagueTdByPos[pos] || 0.4) * 0.75
-      rawTds += placeholderTd
-      contributors.push({
-        id: `${teamAbbr}-${pos}-placeholder-${filled}`,
-        name: `${pos} placeholder`,
-        position: pos,
-        tds: r2(placeholderTd),
-        injuryWeight: 0.75,
-        injuryStatus: 'Placeholder',
-        isPlaceholder: true,
-      })
+      if (pos === 'WR') {
+        contributors.push({
+          id: `${teamAbbr}-WR-empty-${filled}`,
+          name: 'WR (none)',
+          position: 'WR',
+          tds: 0,
+          injuryWeight: 0,
+          injuryStatus: 'Empty',
+          isPlaceholder: true,
+        })
+      } else {
+        const placeholderTd = (leagueTdByPos[pos] || 0.4) * 0.75
+        rawTds += placeholderTd
+        contributors.push({
+          id: `${teamAbbr}-${pos}-placeholder-${filled}`,
+          name: `${pos} placeholder`,
+          position: pos,
+          tds: r2(placeholderTd),
+          injuryWeight: 0.75,
+          injuryStatus: 'Placeholder',
+          isPlaceholder: true,
+        })
+      }
       filled++
     }
   }
