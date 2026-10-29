@@ -41,26 +41,38 @@ export default function DefenseDetail() {
   const week = data?.meta.projectionWeek || data?.meta.week
 
   const rows: StatRowDef[] = []
-  const add = (label: string, season: number | undefined, key: StatRowDef['key'], showZero = true) => {
+  /** Rank PA/YA on per-game rate; volume counting still ranked on season totals via withStatRanks. */
+  const add = (
+    label: string,
+    season: number | undefined,
+    key: StatRowDef['key'],
+    showZero = true,
+    rankPerGame = false
+  ) => {
     if (season == null) return
     if (!showZero && season === 0) return
+    const perGame = pg(season, games)
     rows.push({
       label,
       key,
-      value: season,
+      // Ranking metric: per-game for allowed rates, otherwise season total
+      value: rankPerGame ? perGame : season,
       season: Number.isInteger(season) ? season : Math.round(season * 10) / 10,
-      perGame: pg(season, games),
+      perGame,
+      gamesPlayed: games,
     })
   }
 
   rows.push({ label: 'Games played', season: games, noRank: true })
   if (s.sacks != null) {
+    const sackPg = pg(s.sacks, games)
     rows.push({
       label: 'Sacks',
-      value: s.sacks,
+      value: sackPg, // rank among peers by sacks/game
       season: s.sacks,
-      perGame: pg(s.sacks, games),
-      noRank: true,
+      perGame: sackPg,
+      gamesPlayed: games,
+      noRank: true, // rank filled below from per-game peer list
     })
   }
   add('Interceptions', s.ints, 'ints', true)
@@ -69,16 +81,39 @@ export default function DefenseDetail() {
   add('Defensive TDs', s.defTDs, 'defTDs', true)
   add('Safeties', s.safeties, 'safeties', true)
   add('Kicks blocked', s.kicksBlocked, undefined, true)
-  add('Points allowed', s.ptsAllowed, 'ptsAllowed', true)
-  add('Yards allowed', s.yardsAllowed, 'yardsAllowed', true)
+  add('Points allowed', s.ptsAllowed, 'ptsAllowed', true, true)
+  add('Yards allowed', s.yardsAllowed, 'yardsAllowed', true, true)
 
-  const peerPayload = peers.map((d) => ({
-    stats: d.stats as Record<string, number | undefined>,
-  }))
-  const sackVals = peers.map((d) => (d.stats as Record<string, number | undefined>).sacks || 0)
+  const peerPayload = peers.map((d) => {
+    const st = { ...(d.stats as Record<string, number | undefined>) }
+    if (!st.gamesPlayed || st.gamesPlayed <= 0) {
+      const logs = (d.stats as { gameLogs?: unknown[] }).gameLogs
+      st.gamesPlayed =
+        (Array.isArray(logs) && logs.length) ||
+        d.fantasy?.gamesPlayed ||
+        d.fantasy?.games ||
+        1
+    }
+    return { stats: st }
+  })
+
+  // Sacks ranked by per-game (higher better)
+  const sackPgVals = peers.map((d) => {
+    const st = d.stats as Record<string, number | undefined>
+    const gp = Math.max(
+      1,
+      st.gamesPlayed ||
+        (d.stats as { gameLogs?: unknown[] }).gameLogs?.length ||
+        d.fantasy?.gamesPlayed ||
+        d.fantasy?.games ||
+        1
+    )
+    return (st.sacks || 0) / gp
+  })
+  const mySackPg = (s.sacks || 0) / games
   const sackRank =
     s.sacks != null
-      ? [...sackVals].sort((a, b) => b - a).indexOf(s.sacks) + 1
+      ? [...sackPgVals].sort((a, b) => b - a).filter((v) => v > mySackPg).length + 1
       : undefined
 
   let rankedRows = withStatRanks(rows, peerPayload, peers.length)
@@ -146,7 +181,7 @@ export default function DefenseDetail() {
         breakdown={[
           {
             title: 'DST rank',
-            body: 'Fantasy position grade among all 32 team defenses using your league DST scoring (sacks, turnovers, TDs, PA/YA brackets applied per game). #1 = highest fantasy production.',
+            body: 'Fantasy position grade among all 32 team defenses using your league DST scoring (sacks, turnovers, TDs, PA/YA brackets applied per game). Ranked by average fantasy points per game. #1 = highest fantasy production.',
           },
           {
             title: 'Value rank',
@@ -154,7 +189,7 @@ export default function DefenseDetail() {
           },
           {
             title: 'RPS rank',
-            body: 'Real-football defensive value (not fantasy scoring). Ranked among 32 team defenses.',
+            body: 'Real-football defensive value (not fantasy scoring). Ranked among 32 team defenses using per-game rates.',
           },
         ]}
       />
@@ -227,7 +262,7 @@ export default function DefenseDetail() {
 
       <h2 className="text-lg font-semibold mb-2">Season stats</h2>
       <p className="text-[11px] text-slate-500 mb-3">
-        Totals, per-game, and rank among 32 defenses (lower better for PA / YA)
+        Totals, per-game, and rank among 32 defenses (PA / YA ranked by per-game rate; lower is better)
       </p>
 
       <div className="rounded-xl border border-slate-800 overflow-hidden mb-4">
@@ -273,7 +308,8 @@ export default function DefenseDetail() {
       <p className="mt-4 text-xs text-slate-500 leading-relaxed">
         DST grades use league PA/YA brackets <strong className="text-slate-400">per game</strong>{' '}
         (not season average). Weekly projection adjusts for opponent{' '}
-        <strong className="text-slate-400">offense RPS</strong>.
+        <strong className="text-slate-400">offense RPS</strong>. Fantasy rank is by{' '}
+        <strong className="text-slate-400">avg PPG</strong> among 32 defenses.
       </p>
     </div>
   )
