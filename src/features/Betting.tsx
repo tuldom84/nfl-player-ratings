@@ -55,8 +55,9 @@ export default function Betting() {
         (team TOD/g − opponent TOD/g) × 3.5 is added to that team and subtracted from the
         opponent. TOD/g = takeaways/g − giveaways/g. Injury on TD/FG rates only:
         Questionable or day-to-day −10%, Doubtful −30%. Out, IR, and suspension are not
-        penalized. Each player's TDs/g is multiplied by availability (games played / team
-        games) so a 1–2 game spike does not count as a full-season rate. Pass/rec TDs counted once (no double-count of QB pass TDs).
+        penalized. RB/WR/TE TDs/g are multiplied by availability (games played / team
+        games). The QB is not — only the 10% (questionable or day-to-day) or 30% (doubtful)
+        injury cut. Pass/rec TDs counted once (no double-count of QB pass TDs).
         Spreads shown as traditional favorite line (nearest ½) with model margin in parentheses.
       </div>
 

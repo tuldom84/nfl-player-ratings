@@ -80,8 +80,8 @@ export default function About() {
         , then net turnover differential: (team TOD/g − opponent TOD/g) × 3.5 added to that
         team and subtracted from the opponent. TOD/g is takeaways per game minus giveaways per
         game. Questionable or day-to-day TDs count at 90%, Doubtful at 70%. Out, IR, and
-        suspension are not penalized. Player TDs/g are multiplied by availability (games
-        played / team games). Pass/rec TDs counted once (QB pass + all rush).
+        suspension are not penalized. RB, WR, and TE TDs/g are multiplied by availability
+        (games played / team games). The QB is not. Pass/rec TDs counted once (QB pass + all rush).
       </p>
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Data cadence</h2>

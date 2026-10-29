@@ -46,9 +46,10 @@
  *   (Does not apply to the QB quality boost.)
  *
  * Availability (existing lake value, games played / team games):
- *   Each selected player's TD/g is multiplied by availability so a 1–2 game
- *   spike is not treated as a full-season rate. Roster slots are chosen by
- *   that same availability-adjusted production.
+ *   RB / WR / TE TD/g is multiplied by availability so a 1–2 game spike
+ *   is not treated as a full-season rate. Those slots are chosen the same way.
+ *   The one QB is not reduced by availability. Injury still applies:
+ *   Questionable or day-to-day −10%, Doubtful −30%.
  */
 
 import type { DataLake, Player, TeamDefense, TeamOffense } from './types'
@@ -316,10 +317,10 @@ function teamBreakdown(
       .map((p) => {
         const key = productionKey(p)
         const inj = playerInj(p)
-        const avail = playerAvailability(p)
+        const avail = pos === 'QB' ? 1 : playerAvailability(p)
         return { p, key, inj, avail }
       })
-      // Expected TDs per team game, so a 1-game spike cannot take the slot
+      // RB/WR/TE: expected TDs per team game. QB: raw rate (only one plays).
       .sort(
         (a, b) =>
           b.key.tdPg * b.avail - a.key.tdPg * a.avail ||
@@ -336,8 +337,8 @@ function teamBreakdown(
       const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
       let playerTds = 0
       if (pos === 'QB') {
-        // Only rush TDs count toward team score (pass TDs already in receivers)
-        playerTds = pg(safe(st.rushTDs), g) * inj * avail
+        // One QB: full rush TD/g. Injury only (Q/DTD −10%, Doubtful −30%).
+        playerTds = pg(safe(st.rushTDs), g) * inj
         // QB quality boost is not injury-weighted
         qbBoost = qbQualityBoost(p)
         qbName = p.name
