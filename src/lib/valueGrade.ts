@@ -10,9 +10,13 @@
  *
  * Grades use within-pool min-max on valueRaw (same idea as RPS), not rank
  * against a fixed 1600-player pool — that collapsed top players to ~100.
+ *
+ * Label bands (shared with pos grade + RPS):
+ *   80–100 Elite · 65–79 Great · 50–64 Solid · 30–49 Average · <30 Below
  */
 
 import type { Position, DataLake } from './types'
+import { gradeLabel } from './grading'
 
 export const PPR_POSITION_VALUE: Record<Position, number> = {
   RB: 1.2,
@@ -21,14 +25,6 @@ export const PPR_POSITION_VALUE: Record<Position, number> = {
   QB: 0.88,
   DST: 0.72,
   K: 0.45,
-}
-
-function gradeLabel(score: number): string {
-  if (score >= 90) return 'Elite'
-  if (score >= 75) return 'Great'
-  if (score >= 55) return 'Solid'
-  if (score >= 35) return 'Average'
-  return 'Below'
 }
 
 /**
