@@ -44,6 +44,11 @@
  *   Doubtful → 70% (30% penalty)
  *   Out / IR / Suspension / everyone else → 100% (no penalty)
  *   (Does not apply to the QB quality boost.)
+ *
+ * Availability (existing lake value, games played / team games):
+ *   Each selected player's TD/g is multiplied by availability so a 1–2 game
+ *   spike is not treated as a full-season rate. Roster slots are chosen by
+ *   that same availability-adjusted production.
  */
 
 import type { DataLake, Player, TeamDefense, TeamOffense } from './types'
@@ -87,6 +92,21 @@ function injuryFactor(status?: string, detail?: string): number {
 
 function playerInj(p: Player): number {
   return injuryFactor(p.fantasy?.injuryStatus, p.fantasy?.injuryDetail)
+}
+
+/**
+ * Share of team games the player has actually played.
+ * Prefer the lake's `availability` (games played / team games). Fall back to
+ * the same ratio from stats when the scored lake has not been applied yet.
+ */
+function playerAvailability(p: Player): number {
+  const stored = p.availability
+  if (typeof stored === 'number' && !Number.isNaN(stored)) return clamp(stored, 0, 1)
+  const st = p.stats || {}
+  const gp = st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 0
+  const tg = st.teamGamesPlayed || p.fantasy?.teamGamesPlayed || 0
+  if (gp <= 0 || tg <= 0) return 1
+  return clamp(gp / tg, 0, 1)
 }
 
 function leaguePaPg(defenses: TeamDefense[]): number {
@@ -202,6 +222,8 @@ export type TdContributor = {
   position: string
   tds: number
   injuryWeight: number
+  /** games played / team games. 1 = played every team game. */
+  availability: number
   injuryStatus?: string
   isPlaceholder?: boolean
 }
@@ -294,13 +316,18 @@ function teamBreakdown(
       .map((p) => {
         const key = productionKey(p)
         const inj = playerInj(p)
-        return { p, key, inj }
+        const avail = playerAvailability(p)
+        return { p, key, inj, avail }
       })
-      // Sort highest production first (TDs then yards)
-      .sort((a, b) => b.key.tdPg - a.key.tdPg || b.key.ydsPg - a.key.ydsPg)
+      // Expected TDs per team game, so a 1-game spike cannot take the slot
+      .sort(
+        (a, b) =>
+          b.key.tdPg * b.avail - a.key.tdPg * a.avail ||
+          b.key.ydsPg * b.avail - a.key.ydsPg * a.avail
+      )
 
     let filled = 0
-    for (const { p, inj } of candidates) {
+    for (const { p, inj, avail } of candidates) {
       if (filled >= need) break
       // Bye does not play. Out / IR / Suspension stay in at full rate.
       if (p.fantasy?.homeAway === 'bye') continue
@@ -310,13 +337,13 @@ function teamBreakdown(
       let playerTds = 0
       if (pos === 'QB') {
         // Only rush TDs count toward team score (pass TDs already in receivers)
-        playerTds = pg(safe(st.rushTDs), g) * inj
+        playerTds = pg(safe(st.rushTDs), g) * inj * avail
         // QB quality boost is not injury-weighted
         qbBoost = qbQualityBoost(p)
         qbName = p.name
       } else {
-        // RB / WR / TE: rush + receiving TDs
-        playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * inj
+        // RB / WR / TE: rush + receiving TDs, scaled by availability
+        playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * inj * avail
       }
 
       rawTds += playerTds
@@ -326,6 +353,7 @@ function teamBreakdown(
         position: pos,
         tds: r2(playerTds),
         injuryWeight: inj,
+        availability: r2(avail),
         injuryStatus: p.fantasy?.injuryStatus,
       })
       filled++
@@ -342,6 +370,7 @@ function teamBreakdown(
           position: 'WR',
           tds: 0,
           injuryWeight: 0,
+          availability: 1,
           injuryStatus: 'Empty',
           isPlaceholder: true,
         })
@@ -354,6 +383,7 @@ function teamBreakdown(
           position: pos,
           tds: r2(placeholderTd),
           injuryWeight: 0.75,
+          availability: 1,
           injuryStatus: 'Placeholder',
           isPlaceholder: true,
         })

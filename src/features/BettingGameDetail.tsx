@@ -475,6 +475,12 @@ export default function BettingGameDetail() {
                           · {Math.round(c.injuryWeight * 100)}%
                         </span>
                       )}
+                      {!c.isPlaceholder && c.availability < 0.995 && (
+                        <span className="text-sky-400/80">
+                          {' '}
+                          · {Math.round(c.availability * 100)}% avail
+                        </span>
+                      )}
                     </span>
                     <span className="tabular-nums text-slate-400 shrink-0">{c.tds.toFixed(2)}</span>
                   </li>
@@ -493,7 +499,8 @@ export default function BettingGameDetail() {
         league) scales both adjusted TDs and projected FG made. Missing WR slots contribute 0;
         other missing slots use 75% of league-average TD/game. Injury weights on those TD
         rates (and the kicker): Questionable or day-to-day −10%, Doubtful −30%. No other
-        injury penalty. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
+        injury penalty. Each player's TDs/g × availability (games played / team games).
+        Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
         Net TO differential: (own TOD/g − opp TOD/g) × {TO_DIFF_POINT_VALUE} is added to that
         team and subtracted from the other (total unchanged). TOD/g = (def INT + FR)/g − (off
         INT + fumbles lost)/g.
