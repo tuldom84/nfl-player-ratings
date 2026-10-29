@@ -1,44 +1,88 @@
+import { Link } from 'react-router-dom'
+
 export default function About() {
   return (
     <div className="px-4 pt-4 pb-8 prose prose-invert prose-sm max-w-none">
-      <h1 className="text-2xl font-bold mb-4">About</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold m-0">About</h1>
+        <Link to="/" className="text-sm text-emerald-400 no-underline">
+          ← Home
+        </Link>
+      </div>
 
       <p className="text-slate-300 leading-relaxed">
-        <strong>NFL Player Ratings</strong> is a mobile-first PWA that grades NFL players
-        for fantasy football using current-season statistics pulled from ESPN’s public APIs.
+        <strong>NFL Player Ratings</strong> is a mobile-first PWA that grades NFL players and
+        teams for fantasy football using current-season stats from ESPN’s public APIs. League
+        scoring is fully configurable in Settings and drives season points, averages, and
+        projections.
       </p>
 
-      <h2 className="text-lg font-semibold mt-6 mb-2">Scoring used</h2>
+      <h2 className="text-lg font-semibold mt-6 mb-2">Scoring</h2>
+      <p className="text-slate-300">
+        Defaults match typical full-PPR + your league’s DST PA/YA brackets. Everything is
+        editable under Settings and applied on device — nothing is hardcoded in the scorers.
+      </p>
       <ul className="list-disc pl-5 space-y-1 text-slate-300">
         <li>
-          <strong>Offense (QB/RB/WR/TE):</strong> full-PPR (1 pt/rec, 0.1/yd, 6 rush/rec TD,
-          4 pass TD, −2 INT).
+          <strong>Offense (QB/RB/WR/TE):</strong> pass/rush/rec yards & TDs, receptions, INT,
+          fumbles lost (default −2).
         </li>
         <li>
-          <strong>Kicker:</strong> XP made 1; FG miss −1; FG 0–39: 3, 40–49: 4, 50–59: 5,
-          60+: 6.
+          <strong>Kicker:</strong> XP, FG miss, distance buckets (0–39 / 40–49 / 50–59 / 60+).
         </li>
         <li>
-          <strong>DST:</strong> points-allowed & yards-allowed brackets per game, plus sack 1,
-          INT 2, FR 2, FF 1, safety 2, def/return TD 6, blocked kick 2.
+          <strong>DST:</strong> counting stats (sack, INT, FR, FF, safety, def TD, blocked kick)
+          plus <em>per-game</em> points-allowed and yards-allowed brackets.
         </li>
       </ul>
 
-      <h2 className="text-lg font-semibold mt-6 mb-2">How grades work</h2>
+      <h2 className="text-lg font-semibold mt-6 mb-2">Grades & ranks</h2>
       <ul className="list-disc pl-5 space-y-1 text-slate-300">
-        <li>Season fantasy points are computed with the scoring above.</li>
-        <li>Position grade: relative to others at the same position (0–100).</li>
         <li>
-          Value grade: cross-position using avg PPG × availability × PPR positional weight.
+          <strong>Position grade:</strong> avg fantasy PPG vs others at the same position (0–100).
+        </li>
+        <li>
+          <strong>Value grade:</strong> cross-position (avg PPG × availability × positional
+          scarcity).
+        </li>
+        <li>
+          <strong>RPS:</strong> real-football value from per-game rates (not fantasy scoring).
+          Team offense RPS uses <strong>net yards/game</strong> (never gross total yards).
+        </li>
+        <li>
+          Stat table ranks: rates like PA/YA use <strong>per-game</strong> values so teams with
+          different games played compare fairly. Season totals still show a rank when relevant.
         </li>
         <li>Labels: Elite (≥90), Great (≥75), Solid (≥55), Average (≥35), Below.</li>
       </ul>
 
+      <h2 className="text-lg font-semibold mt-6 mb-2">Weekly projections</h2>
+      <ul className="list-disc pl-5 space-y-1 text-slate-300">
+        <li>
+          <strong>Skill players:</strong> yards scale with opponent DST yards allowed vs league
+          avg; TDs scale with opponent points allowed vs league avg; then scored with your
+          settings.
+        </li>
+        <li>
+          <strong>DST:</strong> season avg PPG adjusted by opponent offense PPG and net YPG vs
+          league averages (stronger offense → lower DST projection).
+        </li>
+        <li>Injury status scales projections (Out/IR = 0, Doubtful, Questionable, etc.).</li>
+      </ul>
+
+      <h2 className="text-lg font-semibold mt-6 mb-2">Betting tab</h2>
+      <p className="text-slate-300">
+        Projected game scores for the current week:{' '}
+        <strong>matchup-adjusted offensive TDs × 6 + projected FG made × 3</strong>. Pass and
+        receiving TDs are counted once (QB pass + all rush). Does not include XP, safeties, or
+        defensive scores.
+      </p>
+
       <h2 className="text-lg font-semibold mt-6 mb-2">Data cadence</h2>
       <p className="text-slate-300">
-        Stats are synced <strong>once per week on Tuesday</strong> and stored in a static
-        data lake. DST points/yards allowed are scored <em>per game</em> from box scores so
-        brackets apply correctly.
+        Stats sync weekly (Tuesday) into a static data lake on GitHub Pages. Game logs and box
+        scores load on demand from ESPN when you open them. Client-side rescoring applies your
+        saved Settings immediately.
       </p>
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Data sources</h2>
@@ -47,8 +91,8 @@ export default function About() {
       </p>
 
       <p className="mt-8 text-xs text-slate-500">
-        Not affiliated with ESPN or the NFL. Stats and grades are for entertainment / fantasy
-        analysis only.
+        Not affiliated with ESPN or the NFL. Stats, grades, and score projections are for
+        entertainment and fantasy analysis only — not betting advice.
       </p>
     </div>
   )
