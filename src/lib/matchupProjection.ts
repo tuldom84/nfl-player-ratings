@@ -9,7 +9,7 @@
  *   Score adjusted components with user scoring settings
  *
  * DST:
- *   - Inverse of opponent offense PPG and YPG vs league averages
+ *   - Inverse of opponent offense PPG and net YPG vs league averages
  *   Harder offense → lower DST projection
  */
 
@@ -47,7 +47,7 @@ function leagueDstAverages(defenses: TeamDefense[]): { yaPg: number; paPg: numbe
 }
 
 function leagueOffenseAverages(
-  offenses: Array<{ stats?: { pointsPerGame?: number; yardsPerGame?: number; totalPoints?: number; totalYards?: number; gamesPlayed?: number } }>
+  offenses: Array<{ stats?: { pointsPerGame?: number; yardsPerGame?: number; totalPoints?: number; gamesPlayed?: number } }>
 ): { ppg: number; ypg: number } {
   let ppg = 0
   let ypg = 0
@@ -56,7 +56,8 @@ function leagueOffenseAverages(
     const s = o.stats || {}
     const g = Math.max(1, s.gamesPlayed || 1)
     const p = s.pointsPerGame ?? (s.totalPoints != null ? s.totalPoints / g : 0)
-    const y = s.yardsPerGame ?? (s.totalYards != null ? s.totalYards / g : 0)
+    // Net yards/game only — never totalYards / games
+    const y = s.yardsPerGame ?? 0
     if (!p && !y) continue
     ppg += p
     ypg += y
@@ -133,7 +134,6 @@ function projectPlayer(
   }
 
   const pos = p.position
-  // Kickers: keep season avg × mild YA factor if available, else avg
   if (pos === 'K') {
     const rates = dstRates(oppDst)
     const ydsF = rates ? clamp(rates.yaPg / league.yaPg, 0.85, 1.15) : 1
@@ -155,7 +155,6 @@ function projectPlayer(
   const ydsFactor = rates ? clamp(rates.yaPg / Math.max(league.yaPg, 1), 0.7, 1.35) : 1
   const tdFactor = rates ? clamp(rates.paPg / Math.max(league.paPg, 1), 0.7, 1.35) : 1
 
-  // Base per-game production
   const base = {
     passYds: pg(safe(st.passYds), g),
     passTDs: pg(safe(st.passTDs), g),
@@ -167,11 +166,10 @@ function projectPlayer(
     recTDs: pg(safe(st.recTDs), g),
   }
 
-  // Apply matchup: yards × YA factor, TDs × PA factor (receptions unchanged)
   const adj = {
     passYds: base.passYds * ydsFactor,
     passTDs: base.passTDs * tdFactor,
-    ints: base.ints, // turnovers not boosted by soft DST in this model
+    ints: base.ints,
     rushYds: base.rushYds * ydsFactor,
     rushTDs: base.rushTDs * tdFactor,
     rec: base.rec,
@@ -182,7 +180,6 @@ function projectPlayer(
   let pts = scoreSkillRates(adj, pos, settings) * inj
   pts = Math.round(pts * 10) / 10
 
-  // Effective overall multiplier vs unadjusted avg for UI
   const baseline = scoreSkillRates(base, pos, settings) || f.avgPts || 1
   const mult = baseline > 0 ? Math.round((pts / (baseline * inj || baseline)) * 1000) / 1000 : 1
 
@@ -214,15 +211,12 @@ function projectDst(
     return { projectedPts: Math.round(avg * 10) / 10, mult: 1 }
   }
 
-  // Stronger offense → harder DST matchup → lower projection (inverse factors)
   const ptsF = clamp(league.ppg / Math.max(oppOffense.ppg, 1), 0.7, 1.35)
   const ydsF = clamp(league.ypg / Math.max(oppOffense.ypg, 1), 0.7, 1.35)
   const mult = Math.round(((ptsF + ydsF) / 2) * 1000) / 1000
   const projectedPts = Math.round(avg * mult * 10) / 10
 
-  const pPct = Math.round((1 / ptsF - 1) * 100) // offense strength vs avg
-  const yPct = Math.round((1 / ydsF - 1) * 100)
-  const note = `vs ${oppOffense.abbr} OFF: ${oppOffense.ppg.toFixed(1)} PPG / ${Math.round(oppOffense.ypg)} YPG (league ${league.ppg.toFixed(1)}/${Math.round(league.ypg)}) · proj ×${mult.toFixed(2)}`
+  const note = `vs ${oppOffense.abbr} OFF: ${oppOffense.ppg.toFixed(1)} PPG / ${Math.round(oppOffense.ypg)} net YPG (league ${league.ppg.toFixed(1)}/${Math.round(league.ypg)}) · proj ×${mult.toFixed(2)}`
 
   return { projectedPts, mult, note }
 }
@@ -240,7 +234,7 @@ export function applyMatchupProjections(lake: DataLake, settings: ScoringSetting
       const s = o.stats || {}
       const g = Math.max(1, s.gamesPlayed || 1)
       const ppg = s.pointsPerGame ?? (s.totalPoints != null ? s.totalPoints / g : 0)
-      const ypg = s.yardsPerGame ?? (s.totalYards != null ? s.totalYards / g : 0)
+      const ypg = s.yardsPerGame ?? 0 // net YPG only
       return [
         o.abbreviation,
         {
