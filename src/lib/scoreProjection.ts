@@ -8,8 +8,16 @@
  *   + (projected DST safeties) × 2
  *   + home-field advantage (+2.5 for home team)
  *
+ * TD contributors (fixed roster construction):
+ *   Best 1 QB + 2 RB + 3 WR + 2 TE per team, sorted by production
+ *   (relevant TDs/g then yards/g). Receiving TDs included for RB/WR/TE.
+ *
+ * If a required slot is missing / Out / IR / Suspension:
+ *   placeholder TD = league-average TD/game for that position × 0.75
+ *   (still multiplied by matchup TD factor; same scales/weights).
+ *
  * Injury weights (betting):
- *   Out / IR / Suspension → 0
+ *   Out / IR / Suspension → 0 (slot becomes placeholder)
  *   Questionable → 50%
  *   Doubtful / day-to-day → 25%
  *   Active → 100%
@@ -18,6 +26,13 @@
 import type { DataLake, Player, TeamDefense } from './types'
 
 export const HOME_FIELD_ADVANTAGE = 2.5
+
+const SLOT_COUNTS: Record<string, number> = {
+  QB: 1,
+  RB: 2,
+  WR: 3,
+  TE: 2,
+}
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
@@ -85,6 +100,51 @@ function oppYaFactor(opp: TeamDefense | undefined, leagueYa: number): number {
   return clamp(ya / Math.max(leagueYa, 1), 0.85, 1.15)
 }
 
+/** League-average relevant TD/game by position (for placeholders). */
+function leagueTdPerGameByPos(players: Player[]): Record<string, number> {
+  const acc: Record<string, { sum: number; n: number }> = {
+    QB: { sum: 0, n: 0 },
+    RB: { sum: 0, n: 0 },
+    WR: { sum: 0, n: 0 },
+    TE: { sum: 0, n: 0 },
+  }
+  for (const p of players) {
+    if (!acc[p.position]) continue
+    const st = p.stats || {}
+    const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
+    let tds = 0
+    if (p.position === 'QB') {
+      tds = pg(safe(st.passTDs), g) + pg(safe(st.rushTDs), g)
+    } else {
+      tds = pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)
+    }
+    if (tds <= 0) continue
+    acc[p.position].sum += tds
+    acc[p.position].n++
+  }
+  const out: Record<string, number> = {}
+  for (const pos of Object.keys(acc)) {
+    out[pos] = acc[pos].n ? acc[pos].sum / acc[pos].n : pos === 'QB' ? 1.6 : 0.45
+  }
+  return out
+}
+
+/** Production key for sorting: relevant TD/g primary, yards/g secondary. */
+function productionKey(p: Player): { tdPg: number; ydsPg: number } {
+  const st = p.stats || {}
+  const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
+  if (p.position === 'QB') {
+    return {
+      tdPg: pg(safe(st.passTDs), g) + pg(safe(st.rushTDs), g),
+      ydsPg: pg(safe(st.passYds), g) + pg(safe(st.rushYds), g),
+    }
+  }
+  return {
+    tdPg: pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g),
+    ydsPg: pg(safe(st.rushYds), g) + pg(safe(st.recYds), g),
+  }
+}
+
 export type TdContributor = {
   id: string
   name: string
@@ -92,6 +152,7 @@ export type TdContributor = {
   tds: number
   injuryWeight: number
   injuryStatus?: string
+  isPlaceholder?: boolean
 }
 
 export type TeamScoreBreakdown = {
@@ -120,7 +181,8 @@ function teamBreakdown(
   players: Player[],
   dstByAbbr: Map<string, TeamDefense>,
   leaguePa: number,
-  leagueYa: number
+  leagueYa: number,
+  leagueTdByPos: Record<string, number>
 ): TeamScoreBreakdown {
   const empty: TeamScoreBreakdown = {
     abbr: teamAbbr,
@@ -150,35 +212,74 @@ function teamBreakdown(
   const tdF = oppPaFactor(oppDst, leaguePa)
   const yaF = oppYaFactor(oppDst, leagueYa)
 
+  // Group skill players by position
+  const byPos: Record<string, Player[]> = { QB: [], RB: [], WR: [], TE: [] }
+  for (const p of roster) {
+    if (byPos[p.position]) byPos[p.position].push(p)
+  }
+
   const contributors: TdContributor[] = []
   let tds = 0
-  for (const p of roster) {
-    if (p.position === 'K' || p.position === 'DST') continue
-    const f = p.fantasy
-    const inj = playerInj(p)
-    if (inj === 0 || f?.homeAway === 'bye') continue
 
-    const st = p.stats || {}
-    const g = Math.max(1, st.gamesPlayed || f?.gamesPlayed || f?.games || 1)
-    let playerTds = 0
-    if (p.position === 'QB') {
-      playerTds = (pg(safe(st.passTDs), g) + pg(safe(st.rushTDs), g)) * tdF * inj
-    } else if (p.position === 'RB' || p.position === 'WR' || p.position === 'TE') {
-      playerTds = pg(safe(st.rushTDs), g) * tdF * inj
+  for (const pos of ['QB', 'RB', 'WR', 'TE'] as const) {
+    const need = SLOT_COUNTS[pos]
+    const candidates = byPos[pos]
+      .map((p) => {
+        const key = productionKey(p)
+        const inj = playerInj(p)
+        return { p, key, inj }
+      })
+      // Sort highest production first (TDs then yards)
+      .sort((a, b) => b.key.tdPg - a.key.tdPg || b.key.ydsPg - a.key.ydsPg)
+
+    let filled = 0
+    for (const { p, inj } of candidates) {
+      if (filled >= need) break
+      // Fully out → treat as missing slot (placeholder later)
+      if (inj === 0 || p.fantasy?.homeAway === 'bye') continue
+
+      const st = p.stats || {}
+      const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
+      let playerTds = 0
+      if (pos === 'QB') {
+        playerTds = (pg(safe(st.passTDs), g) + pg(safe(st.rushTDs), g)) * tdF * inj
+      } else {
+        // RB / WR / TE: rush + receiving TDs
+        playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * tdF * inj
+      }
+
+      tds += playerTds
+      contributors.push({
+        id: p.id,
+        name: p.name,
+        position: pos,
+        tds: r2(playerTds),
+        injuryWeight: inj,
+        injuryStatus: p.fantasy?.injuryStatus,
+      })
+      filled++
     }
-    if (playerTds <= 0.001) continue
-    tds += playerTds
-    contributors.push({
-      id: p.id,
-      name: p.name,
-      position: p.position,
-      tds: r2(playerTds),
-      injuryWeight: inj,
-      injuryStatus: f?.injuryStatus,
-    })
+
+    // Fill remaining slots with 75% of league-average TD/game for the position
+    while (filled < need) {
+      const placeholderTd = (leagueTdByPos[pos] || 0.4) * 0.75 * tdF
+      tds += placeholderTd
+      contributors.push({
+        id: `${teamAbbr}-${pos}-placeholder-${filled}`,
+        name: `${pos} placeholder`,
+        position: pos,
+        tds: r2(placeholderTd),
+        injuryWeight: 0.75,
+        injuryStatus: 'Placeholder',
+        isPlaceholder: true,
+      })
+      filled++
+    }
   }
+
   contributors.sort((a, b) => b.tds - a.tds)
 
+  // Kicker (unchanged logic)
   const kickers = roster.filter((p) => p.position === 'K')
   let bestFg = 0
   let bestXp = 0
@@ -282,6 +383,7 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
   const dstByAbbr = new Map(defenses.map((d) => [d.abbreviation, d]))
   const leaguePa = leaguePaPg(defenses)
   const leagueYa = leagueYaPg(defenses)
+  const leagueTdByPos = leagueTdPerGameByPos(players)
 
   const games = new Map<string, { home: string; away: string }>()
   for (const p of players) {
@@ -296,8 +398,8 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
 
   const out: ProjectedGame[] = []
   for (const { home, away } of games.values()) {
-    const h = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa)
-    const a = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa)
+    const h = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+    const a = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
     const homeScore = h.finalScore
     const awayScore = a.finalScore
     const winner =
@@ -337,9 +439,10 @@ export function getGameDetail(
   const dstByAbbr = new Map(defenses.map((d) => [d.abbreviation, d]))
   const leaguePa = leaguePaPg(defenses)
   const leagueYa = leagueYaPg(defenses)
+  const leagueTdByPos = leagueTdPerGameByPos(players)
 
-  const h = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa)
-  const a = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa)
+  const h = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+  const a = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
   const homeScore = h.finalScore
   const awayScore = a.finalScore
   const winner =
