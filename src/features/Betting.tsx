@@ -24,9 +24,9 @@ export default function Betting() {
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2.5 mb-4 text-[11px] text-slate-400 leading-relaxed">
         <strong className="text-slate-300">Model:</strong> team score = matchup-adjusted
-        offensive TDs × 6 + projected FG made × 3. TD rates scale with opponent DST
-        points allowed vs league average. Pass/rec TDs counted once (QB pass + all rush).
-        Does not include XP, safeties, or defensive scores.
+        offensive TDs × 6 + FG made × 3 + XP made × 1 + DST safeties × 2. TD rates scale
+        with opponent DST points allowed vs league average. Pass/rec TDs counted once
+        (QB pass + all rush). XP from kicker rate (capped near projected TDs).
       </div>
 
       {!games.length && (
@@ -68,7 +68,8 @@ export default function Betting() {
                     {g.away}
                   </div>
                   <div className="text-[10px] text-slate-500 tabular-nums">
-                    {g.awayTds.toFixed(1)} TD · {g.awayFg.toFixed(1)} FG
+                    {g.awayTds.toFixed(1)} TD · {g.awayFg.toFixed(1)} FG · {g.awayXp.toFixed(1)}{' '}
+                    XP · {g.awaySafeties.toFixed(2)} S
                   </div>
                 </div>
 
@@ -103,7 +104,8 @@ export default function Betting() {
                     {g.home}
                   </div>
                   <div className="text-[10px] text-slate-500 tabular-nums">
-                    {g.homeTds.toFixed(1)} TD · {g.homeFg.toFixed(1)} FG
+                    {g.homeTds.toFixed(1)} TD · {g.homeFg.toFixed(1)} FG · {g.homeXp.toFixed(1)}{' '}
+                    XP · {g.homeSafeties.toFixed(2)} S
                   </div>
                 </div>
               </div>
