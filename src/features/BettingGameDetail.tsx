@@ -72,7 +72,7 @@ function ScoreCalcTable({
   const qbNote =
     away.qbName || home.qbName
       ? `QB: ${away.qbName || '—'} / ${home.qbName || '—'} · (RPS/100)×(pass TD/g − INT/g)`
-      : '(RPS/100)×(pass TD/g − INT/g) × injury weight'
+      : '(RPS/100)×(pass TD/g − INT/g)'
 
   const rows: { label: string; a: string; h: string; note?: string }[] = [
     {
@@ -469,10 +469,10 @@ export default function BettingGameDetail() {
         Fixed roster: best 1 QB + 2 RB + 4 WR + 2 TE sorted by production (TDs then yards).
         Team TDs = rush TDs (anyone) + receiving TDs (RB/WR/TE). QB pass TDs are excluded from
         the TD total to avoid double-counting; a small QB quality boost of (RPS/100) × (pass TD/g
-        − INT/g) is added to the final score instead. Matchup TD factor applied once: rawTds ×
-        factor → adjusted TDs × 6. Missing WR slots contribute 0; other missing slots use 75% of
-        league-average TD/game. Injury weights: Out = 0, Q = 50%, Doubtful/DTD = 25%. Home field
-        +{HOME_FIELD_ADVANTAGE} applied to {home} only.
+        − INT/g) is added to the final score (not injury-weighted). Matchup TD factor applied
+        once: rawTds × factor → adjusted TDs × 6. Missing WR slots contribute 0; other missing
+        slots use 75% of league-average TD/game. Injury weights: Out = 0, Q = 50%, Doubtful/DTD =
+        25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
       </p>
     </div>
   )
