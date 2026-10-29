@@ -68,6 +68,40 @@ function saveFilters(f: SavedFilters) {
   }
 }
 
+function rankingsSubtitle(
+  pos: Position | 'ALL' | 'OFF' | 'POWER',
+  sortBy: SortKey
+): string {
+  if (pos === 'POWER') {
+    return 'POWER = (offense RPS + defense RPS) ÷ 2 — real football team strength'
+  }
+  if (pos === 'OFF') {
+    return 'OFF = team offense RPS (PPG, YPG, TDs, turnovers — not fantasy)'
+  }
+  if (sortBy === 'rps') {
+    return 'RPS = real football value at position (not fantasy)'
+  }
+  if (sortBy === 'pos') {
+    if (pos === 'ALL') {
+      return 'Pos grade = fantasy value vs others at the same position (each position ranked separately)'
+    }
+    if (pos === 'DST') {
+      return 'Pos grade = fantasy value vs all other team defenses'
+    }
+    return `Pos grade = fantasy value vs all other ${pos}s at the position`
+  }
+  if (sortBy === 'value') {
+    return 'Value = fantasy value regardless of position (PPG × availability × positional weight)'
+  }
+  if (sortBy === 'proj') {
+    return 'Weekly projection (matchup-adjusted)'
+  }
+  if (sortBy === 'avg') {
+    return 'Season average fantasy points per game'
+  }
+  return 'Ranked by selected sort'
+}
+
 export default function Rankings() {
   const { data, loading, error } = useDataLake()
   const initial = loadFilters()
@@ -226,17 +260,7 @@ export default function Rankings() {
     <div className="px-4 pt-4 pb-8">
       <h1 className="text-2xl font-bold mb-1">Rankings</h1>
       <p className="text-xs text-slate-500 mb-3">
-        {pos === 'POWER'
-          ? 'POWER = (offense RPS + defense RPS) ÷ 2 — real football team strength'
-          : pos === 'OFF'
-            ? 'OFF = team offense RPS (PPG, YPG, TDs, turnovers — not fantasy)'
-            : sortBy === 'rps'
-              ? 'RPS = real football value at position (not fantasy)'
-              : pos === 'ALL'
-                ? 'ALL = cross-position PPR value (PPG × availability × pos weight)'
-                : pos === 'DST'
-                  ? 'DST ranked by selected sort'
-                  : `${pos} ranked by selected sort`}
+        {rankingsSubtitle(pos, sortBy)}
         {' · '}Week {week}
       </p>
 
