@@ -5,6 +5,7 @@ import type { ScoringSettings, BracketRow } from './scoringSettings'
 import { applyValueGrades } from './valueGrade'
 import { applyRps } from './rps'
 import { applyOffenseRps } from './offenseRps'
+import { applyMatchupProjections } from './matchupProjection'
 
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 
@@ -169,7 +170,7 @@ function resolveTeamGames(p: Player): number {
   )
 }
 
-/** Recompute fantasy points, grades, RPS, offense RPS, and value grades from user settings. */
+/** Recompute fantasy points, grades, RPS, offense RPS, value grades, and matchup projections. */
 export function applyScoringSettings(lake: DataLake, settings: ScoringSettings): DataLake {
   const players: Player[] = lake.players.map((p) => {
     const seasonPts = scorePlayer(p.stats, p.position, settings)
@@ -178,14 +179,9 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
       p.stats.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1
     )
     const avgPts = Math.round((seasonPts / games) * 10) / 10
-    const mult = p.fantasy?.matchupMultiplier ?? 1
-    const homeAway = p.fantasy?.homeAway
-    let projectedPts = Math.round(avgPts * mult * 10) / 10
-    if (homeAway === 'bye') projectedPts = 0
-    const inj = p.fantasy?.injuryStatus
-    if (inj === 'Out' || inj === 'Injured Reserve' || inj === 'Suspension') projectedPts = 0
-    else if (inj === 'Doubtful') projectedPts = Math.round(projectedPts * 0.4 * 10) / 10
-    else if (inj === 'Questionable') projectedPts = Math.round(projectedPts * 0.85 * 10) / 10
+    // Placeholder proj — replaced by applyMatchupProjections
+    let projectedPts = avgPts
+    if (p.fantasy?.homeAway === 'bye') projectedPts = 0
 
     return {
       ...p,
@@ -216,9 +212,8 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
       d.stats.gameLogs?.length || d.stats.gamesPlayed || d.fantasy?.games || 1
     )
     const avgPts = Math.round((seasonPts / games) * 10) / 10
-    const homeAway = d.fantasy?.homeAway
     let projectedPts = avgPts
-    if (homeAway === 'bye') projectedPts = 0
+    if (d.fantasy?.homeAway === 'bye') projectedPts = 0
     return {
       ...d,
       fantasy: d.fantasy
@@ -293,5 +288,7 @@ export function applyScoringSettings(lake: DataLake, settings: ScoringSettings):
     defenses: defensesWithGrade,
   })
   const withPlayerRps = applyRps(withValue)
-  return applyOffenseRps(withPlayerRps)
+  const withOffenseRps = applyOffenseRps(withPlayerRps)
+  // Final step: rebuild weekly projections from opp DST YA/PA (players) and opp offense (DST)
+  return applyMatchupProjections(withOffenseRps, settings)
 }
