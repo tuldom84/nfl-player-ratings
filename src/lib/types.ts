@@ -70,9 +70,14 @@ export interface PlayerStats {
 export interface OffenseStats {
   gamesPlayed?: number
   pointsPerGame?: number
+  /**
+   * Net yards per game (ESPN netYardsPerGame).
+   * Prefer this for all rankings, RPS, and matchup algorithms — never totalYards / games.
+   */
   yardsPerGame?: number
   passYardsPerGame?: number
   rushYardsPerGame?: number
+  /** Gross season total yards (display only; not used for rankings/scores). */
   totalYards?: number
   totalPoints?: number
   totalTDs?: number
