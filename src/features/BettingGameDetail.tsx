@@ -404,7 +404,7 @@ export default function BettingGameDetail() {
               {side.contributors.length === 0 && (
                 <li className="px-2 py-2 text-slate-600">No TD share</li>
               )}
-              {side.contributors.slice(0, 8).map((c) => (
+              {side.contributors.slice(0, 10).map((c) => (
                 <li
                   key={c.id}
                   className="flex justify-between gap-1 px-2 py-1.5 border-b border-slate-800/60 last:border-0"
@@ -424,12 +424,12 @@ export default function BettingGameDetail() {
       </div>
 
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        Fixed roster: best 1 QB + 2 RB + 3 WR + 2 TE sorted by production (TDs then yards).
+        Fixed roster: best 1 QB + 2 RB + 4 WR + 2 TE sorted by production (TDs then yards).
         Team TDs = rush TDs (anyone) + receiving TDs (RB/WR/TE). QB pass TDs are excluded to
         avoid double-counting. Matchup TD factor applied once: rawTds × factor → adjusted TDs × 6.
-        Missing / Out slots use 75% of league-average (countable) TD/game. Injury weights: Out = 0
-        (placeholder), Q = 50%, Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to{' '}
-        {home} only.
+        Missing WR slots contribute 0; other missing slots use 75% of league-average TD/game.
+        Injury weights: Out = 0, Q = 50%, Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE}{' '}
+        applied to {home} only.
       </p>
     </div>
   )
