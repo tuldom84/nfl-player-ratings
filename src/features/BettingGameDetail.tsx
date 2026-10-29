@@ -7,6 +7,22 @@ function fmt(n: number, d = 1) {
   return n.toFixed(d)
 }
 
+function nearestHalf(n: number): number {
+  return Math.round(n * 2) / 2
+}
+
+/** Traditional favorite line + actual model margin, e.g. WSH -6(+5.9) */
+function formatSpread(home: string, away: string, homeScore: number, awayScore: number): string {
+  const margin = homeScore - awayScore
+  if (Math.abs(margin) < 0.05) return 'PICK'
+  const fav = margin > 0 ? home : away
+  const actual = Math.abs(margin)
+  const line = nearestHalf(actual)
+  if (line === 0) return 'PICK'
+  const lineStr = line % 1 === 0 ? line.toFixed(0) : line.toFixed(1)
+  return `${fav} -${lineStr}(+${actual.toFixed(1)})`
+}
+
 function CompareRow({
   label,
   away,
@@ -206,6 +222,7 @@ export default function BettingGameDetail() {
   const dsH = defHome?.stats
   const gA = Math.max(1, osA?.gamesPlayed || dsA?.gamesPlayed || 1)
   const gH = Math.max(1, osH?.gamesPlayed || dsH?.gamesPlayed || 1)
+  const spreadLabel = formatSpread(home, away, detail.homeScore, detail.awayScore)
 
   return (
     <div className="px-4 pt-4 pb-8">
@@ -249,10 +266,7 @@ export default function BettingGameDetail() {
               Pick {detail.winner}
             </div>
             <div className="tabular-nums">O/U {fmt(detail.total)}</div>
-            <div className="tabular-nums">
-              {home} {detail.spread > 0 ? '+' : ''}
-              {fmt(detail.spread)}
-            </div>
+            <div className="tabular-nums text-slate-400">{spreadLabel}</div>
           </div>
           <div className="text-center">
             <div className={`text-lg font-bold ${homeWin ? 'text-emerald-300' : 'text-slate-200'}`}>
