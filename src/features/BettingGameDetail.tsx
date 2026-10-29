@@ -74,6 +74,11 @@ function ScoreCalcTable({
       ? `QB: ${away.qbName || '—'} / ${home.qbName || '—'} · (RPS/100)×(pass TD/g − INT/g)`
       : '(RPS/100)×(pass TD/g − INT/g)'
 
+  const fgNoteParts = ['season FG/g × TD factor']
+  if (away.kickerName || home.kickerName) {
+    fgNoteParts.unshift(`K: ${away.kickerName || '—'} / ${home.kickerName || '—'}`)
+  }
+
   const rows: { label: string; a: string; h: string; note?: string }[] = [
     {
       label: 'Raw TDs',
@@ -85,7 +90,7 @@ function ScoreCalcTable({
       label: 'TD factor',
       a: fmt(away.tdFactor, 2),
       h: fmt(home.tdFactor, 2),
-      note: 'Opponent points-allowed vs league average (clamped 0.70–1.35)',
+      note: 'Opponent points-allowed vs league average (clamped 0.70–1.35); also scales FG',
     },
     {
       label: 'Adjusted TDs',
@@ -102,9 +107,7 @@ function ScoreCalcTable({
       label: 'Projected FG',
       a: fmt(away.fg, 2),
       h: fmt(home.fg, 2),
-      note: away.kickerName || home.kickerName
-        ? `K: ${away.kickerName || '—'} / ${home.kickerName || '—'}`
-        : undefined,
+      note: fgNoteParts.join(' · '),
     },
     {
       label: 'FG points (×3)',
@@ -469,10 +472,10 @@ export default function BettingGameDetail() {
         Fixed roster: best 1 QB + 2 RB + 4 WR + 2 TE sorted by production (TDs then yards).
         Team TDs = rush TDs (anyone) + receiving TDs (RB/WR/TE). QB pass TDs are excluded from
         the TD total to avoid double-counting; a small QB quality boost of (RPS/100) × (pass TD/g
-        − INT/g) is added to the final score (not injury-weighted). Matchup TD factor applied
-        once: rawTds × factor → adjusted TDs × 6. Missing WR slots contribute 0; other missing
-        slots use 75% of league-average TD/game. Injury weights: Out = 0, Q = 50%, Doubtful/DTD =
-        25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
+        − INT/g) is added to the final score (not injury-weighted). Matchup TD factor (opp PA vs
+        league) scales both adjusted TDs and projected FG made. Missing WR slots contribute 0;
+        other missing slots use 75% of league-average TD/game. Injury weights: Out = 0, Q = 50%,
+        Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
       </p>
     </div>
   )
