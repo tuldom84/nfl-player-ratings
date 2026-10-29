@@ -73,9 +73,11 @@ export default function About() {
       <h2 className="text-lg font-semibold mt-6 mb-2">Betting tab</h2>
       <p className="text-slate-300">
         Projected game scores for the current week:{' '}
-        <strong>matchup-adjusted offensive TDs × 6 + projected FG made × 3</strong>. Pass and
-        receiving TDs are counted once (QB pass + all rush). Does not include XP, safeties, or
-        defensive scores.
+        <strong>
+          matchup-adjusted offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2
+        </strong>
+        . Pass and receiving TDs are counted once (QB pass + all rush). XP uses the kicker's
+        make rate (capped near projected TDs).
       </p>
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Data cadence</h2>
