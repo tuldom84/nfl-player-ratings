@@ -491,8 +491,9 @@ export default function BettingGameDetail() {
         the TD total to avoid double-counting; a small QB quality boost of (RPS/100) × (pass TD/g
         − INT/g) is added to the final score (not injury-weighted). Matchup TD factor (opp PA vs
         league) scales both adjusted TDs and projected FG made. Missing WR slots contribute 0;
-        other missing slots use 75% of league-average TD/game. Injury weights: Out = 0, Q = 50%,
-        Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
+        other missing slots use 75% of league-average TD/game. Injury weights on those TD
+        rates (and the kicker): Questionable or day-to-day −10%, Doubtful −30%. No other
+        injury penalty. Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
         Net TO differential: (own TOD/g − opp TOD/g) × {TO_DIFF_POINT_VALUE} is added to that
         team and subtracted from the other (total unchanged). TOD/g = (def INT + FR)/g − (off
         INT + fumbles lost)/g.

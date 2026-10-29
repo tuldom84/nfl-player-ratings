@@ -33,18 +33,17 @@
  *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
  *   projected FG made → fg * tdFactor (defense quality affects FG chances)
  *
- * If a required slot is missing / Out / IR / Suspension:
+ * If a required slot is missing or on bye:
  *   WR → 0 (no contribution)
  *   QB / RB / TE → league-average TD/game for that position × 0.75
  *   (matchup factor applied later at team level).
  *   QB placeholder uses rush-TD average only (no RPS boost).
  *
- * Injury weights (betting):
- *   Out / IR / Suspension → 0 (slot becomes missing/placeholder)
- *   Questionable → 50%
- *   Doubtful / day-to-day → 25%
- *   Active → 100%
- *   (Injury weights apply to TD/FG/XP contributions, not to QB quality boost.)
+ * Injury weights on TD (and kicker) rates — betting only:
+ *   Questionable or day-to-day → 90% (10% penalty)
+ *   Doubtful → 70% (30% penalty)
+ *   Out / IR / Suspension / everyone else → 100% (no penalty)
+ *   (Does not apply to the QB quality boost.)
  */
 
 import type { DataLake, Player, TeamDefense, TeamOffense } from './types'
@@ -66,17 +65,23 @@ const pg = (total: number, games: number) => total / Math.max(games, 1)
 const r2 = (n: number) => Math.round(n * 100) / 100
 const r1 = (n: number) => Math.round(n * 10) / 10
 
+/** Betting TD/FG weight. Only Q/day-to-day (10% off) and Doubtful (30% off). */
 function injuryFactor(status?: string, detail?: string): number {
+  const s = (status || '').toLowerCase().trim()
   const d = (detail || '').toLowerCase()
   const dayToDay =
+    s === 'day-to-day' ||
+    s === 'day to day' ||
+    s === 'dtd' ||
+    s === 'd2d' ||
     /\bday[-\s]?to[-\s]?day\b/.test(d) ||
     /\bd2d\b/.test(d) ||
     /\bdtd\b/.test(d)
+  const doubtful = s === 'doubtful' || /\bdoubtful\b/.test(d)
+  const questionable = s === 'questionable' || /\bquestionable\b/.test(d)
 
-  if (status === 'Out' || status === 'Injured Reserve' || status === 'Suspension') return 0
-  if (status === 'Doubtful' || dayToDay) return 0.25
-  if (status === 'Questionable') return 0.5
-  if (!status || status === 'Active' || status === 'Unknown') return 1
+  if (doubtful) return 0.7
+  if (questionable || dayToDay) return 0.9
   return 1
 }
 
@@ -297,8 +302,8 @@ function teamBreakdown(
     let filled = 0
     for (const { p, inj } of candidates) {
       if (filled >= need) break
-      // Fully out → treat as missing slot (placeholder / zero later)
-      if (inj === 0 || p.fantasy?.homeAway === 'bye') continue
+      // Bye does not play. Out / IR / Suspension stay in at full rate.
+      if (p.fantasy?.homeAway === 'bye') continue
 
       const st = p.stats || {}
       const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
@@ -381,7 +386,7 @@ function teamBreakdown(
     if (made < bestMade) continue
     bestMade = made
     const inj = playerInj(k)
-    if (inj === 0 || k.fantasy?.homeAway === 'bye') {
+    if (k.fantasy?.homeAway === 'bye') {
       bestFg = 0
       bestXp = 0
       kickerName = k.name

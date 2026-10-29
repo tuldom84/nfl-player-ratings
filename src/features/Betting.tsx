@@ -53,8 +53,9 @@ export default function Betting() {
         of (RPS/100) × (pass TD/g − INT/g), then{' '}
         <strong className="text-slate-300">net TO differential</strong>:{' '}
         (team TOD/g − opponent TOD/g) × 3.5 is added to that team and subtracted from the
-        opponent. TOD/g = takeaways/g − giveaways/g. Injuries: Out/IR = 0, Questionable = 50%,
-        Doubtful/day-to-day = 25%. Pass/rec TDs counted once (no double-count of QB pass TDs).
+        opponent. TOD/g = takeaways/g − giveaways/g. Injury on TD/FG rates only:
+        Questionable or day-to-day −10%, Doubtful −30%. Out, IR, and suspension are not
+        penalized. Pass/rec TDs counted once (no double-count of QB pass TDs).
         Spreads shown as traditional favorite line (nearest ½) with model margin in parentheses.
       </div>
 
