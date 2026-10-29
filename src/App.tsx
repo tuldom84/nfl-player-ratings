@@ -7,6 +7,7 @@ import DefenseDetail from './features/DefenseDetail'
 import OffenseDetail from './features/OffenseDetail'
 import TeamDetail from './features/TeamDetail'
 import Betting from './features/Betting'
+import BettingGameDetail from './features/BettingGameDetail'
 import About from './features/About'
 import Settings from './features/Settings'
 
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/team/:id" element={<TeamDetail />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/betting" element={<Betting />} />
+          <Route path="/betting/:away/:home" element={<BettingGameDetail />} />
           <Route path="/about" element={<About />} />
         </Routes>
       </main>
