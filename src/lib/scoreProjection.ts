@@ -10,11 +10,17 @@
  *
  * TD contributors (fixed roster construction):
  *   Best 1 QB + 2 RB + 3 WR + 2 TE per team, sorted by production
- *   (relevant TDs/g then yards/g). Receiving TDs included for RB/WR/TE.
+ *   (relevant TDs/g then yards/g).
+ *
+ * Important: do NOT add QB pass TDs into the team total.
+ * A pass TD is the same scoring play as the receiver's rec TD —
+ * counting both double-counts. Team TDs = rush TDs (any) +
+ * receiving TDs (RB/WR/TE only).
  *
  * If a required slot is missing / Out / IR / Suspension:
  *   placeholder TD = league-average TD/game for that position × 0.75
  *   (still multiplied by matchup TD factor; same scales/weights).
+ *   QB placeholder uses rush-TD average only.
  *
  * Injury weights (betting):
  *   Out / IR / Suspension → 0 (slot becomes placeholder)
@@ -100,7 +106,11 @@ function oppYaFactor(opp: TeamDefense | undefined, leagueYa: number): number {
   return clamp(ya / Math.max(leagueYa, 1), 0.85, 1.15)
 }
 
-/** League-average relevant TD/game by position (for placeholders). */
+/**
+ * League-average TDs that actually count toward team score, by position.
+ * QB → rush TDs only (pass TDs are not added to team total).
+ * RB/WR/TE → rush + receiving TDs.
+ */
 function leagueTdPerGameByPos(players: Player[]): Record<string, number> {
   const acc: Record<string, { sum: number; n: number }> = {
     QB: { sum: 0, n: 0 },
@@ -114,7 +124,7 @@ function leagueTdPerGameByPos(players: Player[]): Record<string, number> {
     const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
     let tds = 0
     if (p.position === 'QB') {
-      tds = pg(safe(st.passTDs), g) + pg(safe(st.rushTDs), g)
+      tds = pg(safe(st.rushTDs), g) // pass TDs excluded from team total
     } else {
       tds = pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)
     }
@@ -124,12 +134,13 @@ function leagueTdPerGameByPos(players: Player[]): Record<string, number> {
   }
   const out: Record<string, number> = {}
   for (const pos of Object.keys(acc)) {
-    out[pos] = acc[pos].n ? acc[pos].sum / acc[pos].n : pos === 'QB' ? 1.6 : 0.45
+    // QB rush TD average is low; use a small fallback
+    out[pos] = acc[pos].n ? acc[pos].sum / acc[pos].n : pos === 'QB' ? 0.25 : 0.45
   }
   return out
 }
 
-/** Production key for sorting: relevant TD/g primary, yards/g secondary. */
+/** Production key for sorting (selection quality). QBs still ranked on pass+rush. */
 function productionKey(p: Player): { tdPg: number; ydsPg: number } {
   const st = p.stats || {}
   const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
@@ -242,7 +253,8 @@ function teamBreakdown(
       const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
       let playerTds = 0
       if (pos === 'QB') {
-        playerTds = (pg(safe(st.passTDs), g) + pg(safe(st.rushTDs), g)) * tdF * inj
+        // Only rush TDs count toward team score (pass TDs already in receivers)
+        playerTds = pg(safe(st.rushTDs), g) * tdF * inj
       } else {
         // RB / WR / TE: rush + receiving TDs
         playerTds = (pg(safe(st.rushTDs), g) + pg(safe(st.recTDs), g)) * tdF * inj
@@ -260,7 +272,7 @@ function teamBreakdown(
       filled++
     }
 
-    // Fill remaining slots with 75% of league-average TD/game for the position
+    // Fill remaining slots with 75% of league-average (countable) TD/game for the position
     while (filled < need) {
       const placeholderTd = (leagueTdByPos[pos] || 0.4) * 0.75 * tdF
       tds += placeholderTd
