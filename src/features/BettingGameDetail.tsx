@@ -69,6 +69,11 @@ function ScoreCalcTable({
   away: TeamScoreBreakdown
   home: TeamScoreBreakdown
 }) {
+  const qbNote =
+    away.qbName || home.qbName
+      ? `QB: ${away.qbName || '—'} / ${home.qbName || '—'} · (RPS/100)×(pass TD/g ÷ 2)`
+      : '(RPS/100)×(pass TD/g ÷ 2) × injury weight'
+
   const rows: { label: string; a: string; h: string; note?: string }[] = [
     {
       label: 'Raw TDs',
@@ -135,6 +140,12 @@ function ScoreCalcTable({
       label: `Home field (+${HOME_FIELD_ADVANTAGE})`,
       a: '0',
       h: fmt(home.homeField),
+    },
+    {
+      label: 'QB quality boost',
+      a: fmt(away.qbBoost, 2),
+      h: fmt(home.qbBoost, 2),
+      note: qbNote,
     },
     {
       label: 'Final score',
@@ -400,7 +411,7 @@ export default function BettingGameDetail() {
         Score derivation
       </h2>
       <p className="text-[11px] text-slate-500 mb-2">
-        How the projected final scores are built from TDs, kicks, and safeties
+        How the projected final scores are built from TDs, kicks, safeties, and QB quality
       </p>
       <ScoreCalcTable away={detail.awayBreakdown} home={detail.homeBreakdown} />
 
@@ -456,11 +467,12 @@ export default function BettingGameDetail() {
 
       <p className="text-[11px] text-slate-500 leading-relaxed">
         Fixed roster: best 1 QB + 2 RB + 4 WR + 2 TE sorted by production (TDs then yards).
-        Team TDs = rush TDs (anyone) + receiving TDs (RB/WR/TE). QB pass TDs are excluded to
-        avoid double-counting. Matchup TD factor applied once: rawTds × factor → adjusted TDs × 6.
-        Missing WR slots contribute 0; other missing slots use 75% of league-average TD/game.
-        Injury weights: Out = 0, Q = 50%, Doubtful/DTD = 25%. Home field +{HOME_FIELD_ADVANTAGE}{' '}
-        applied to {home} only.
+        Team TDs = rush TDs (anyone) + receiving TDs (RB/WR/TE). QB pass TDs are excluded from
+        the TD total to avoid double-counting; a small QB quality boost of (RPS/100) × (pass TD/g
+        ÷ 2) is added to the final score instead. Matchup TD factor applied once: rawTds × factor
+        → adjusted TDs × 6. Missing WR slots contribute 0; other missing slots use 75% of
+        league-average TD/game. Injury weights: Out = 0, Q = 50%, Doubtful/DTD = 25%. Home field
+        +{HOME_FIELD_ADVANTAGE} applied to {home} only.
       </p>
     </div>
   )
