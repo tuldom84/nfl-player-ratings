@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { RankSummary } from '../components/RankSummary'
 import { GameLogSection } from '../components/GameLogSection'
+import { NextMatchupCard, resolveNextMatchup } from '../components/NextMatchup'
 import { withStatRanks, rankByField, type StatRowDef } from '../lib/statRanks'
 
 function pg(total: number | undefined, games: number): number | undefined {
@@ -20,6 +21,11 @@ export default function DefenseDetail() {
   const rpsRankMap = useMemo(
     () => rankByField(peers, (d) => d.rps ?? d.grade),
     [peers]
+  )
+
+  const matchup = useMemo(
+    () => resolveNextMatchup(data, defense?.abbreviation),
+    [data, defense?.abbreviation]
   )
 
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
@@ -149,6 +155,8 @@ export default function DefenseDetail() {
         </div>
       </div>
 
+      <NextMatchupCard matchup={matchup} week={week} showBetting />
+
       <RankSummary
         title="Season ranks"
         chips={[
@@ -223,11 +231,15 @@ export default function DefenseDetail() {
               {f.projectedPts.toFixed(1)}
             </div>
             <div className="text-[10px] text-slate-500">
-              {f.homeAway === 'bye'
+              {matchup?.homeAway === 'bye'
                 ? 'BYE'
-                : f.opponent
-                  ? `${f.homeAway === 'home' ? 'vs' : '@'} ${f.opponent}`
-                  : '—'}
+                : matchup
+                  ? matchup.label
+                  : f.homeAway === 'bye'
+                    ? 'BYE'
+                    : f.opponent
+                      ? `${f.homeAway === 'home' ? 'vs' : '@'} ${f.opponent}`
+                      : '—'}
             </div>
           </div>
           <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 text-center">
