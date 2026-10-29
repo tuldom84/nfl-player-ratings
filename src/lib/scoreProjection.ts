@@ -6,26 +6,44 @@
  *   + (projected kicker FG made) × 3
  *   + (projected XP made) × 1
  *   + (projected DST safeties) × 2
+ *   + home-field advantage (+2.5 for home team)
+ *
+ * Injury weights (betting):
+ *   Out / IR / Suspension → 0
+ *   Questionable → 50%
+ *   Doubtful / day-to-day → 25%
+ *   Active → 100%
  *
  * TD counting avoids double-counting pass/rec TDs:
  *   QB: pass TDs + rush TDs
  *   RB/WR/TE: rush TDs only (receiving TDs = QB pass TDs)
- *
- * TD rates are adjusted by opponent DST points-allowed vs league average.
  */
 
 import type { DataLake, Player, TeamDefense } from './types'
+
+const HOME_FIELD_ADVANTAGE = 2.5
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 const safe = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 const pg = (total: number, games: number) => total / Math.max(games, 1)
 
-function injuryFactor(status?: string): number {
-  if (!status || status === 'Active' || status === 'Unknown') return 1
-  if (status === 'Questionable') return 0.85
-  if (status === 'Doubtful') return 0.4
+/** Betting-specific availability weights from status + detail text. */
+function injuryFactor(status?: string, detail?: string): number {
+  const d = (detail || '').toLowerCase()
+  const dayToDay =
+    /\bday[-\s]?to[-\s]?day\b/.test(d) ||
+    /\bd2d\b/.test(d) ||
+    /\bdtd\b/.test(d)
+
   if (status === 'Out' || status === 'Injured Reserve' || status === 'Suspension') return 0
+  if (status === 'Doubtful' || dayToDay) return 0.25
+  if (status === 'Questionable') return 0.5
+  if (!status || status === 'Active' || status === 'Unknown') return 1
   return 1
+}
+
+function playerInj(p: Player): number {
+  return injuryFactor(p.fantasy?.injuryStatus, p.fantasy?.injuryDetail)
 }
 
 function leaguePaPg(defenses: TeamDefense[]): number {
@@ -49,10 +67,9 @@ function oppPaFactor(opp: TeamDefense | undefined, leaguePa: number): number {
   return clamp(pa / Math.max(leaguePa, 1), 0.7, 1.35)
 }
 
-/** Matchup-adjusted TDs that count toward team score (no pass/rec double count). */
 function playerTeamTds(p: Player, tdFactor: number): number {
   const f = p.fantasy
-  const inj = injuryFactor(f?.injuryStatus)
+  const inj = playerInj(p)
   if (inj === 0) return 0
   if (f?.homeAway === 'bye') return 0
 
@@ -74,7 +91,7 @@ function playerTeamTds(p: Player, tdFactor: number): number {
 function playerProjectedFg(p: Player, yaFactor: number): number {
   if (p.position !== 'K') return 0
   const f = p.fantasy
-  const inj = injuryFactor(f?.injuryStatus)
+  const inj = playerInj(p)
   if (inj === 0) return 0
   if (f?.homeAway === 'bye') return 0
 
@@ -90,18 +107,16 @@ function playerProjectedFg(p: Player, yaFactor: number): number {
   return pg(fg, g) * clamp(yaFactor, 0.85, 1.15) * inj
 }
 
-/** Projected extra points made (1 pt each). Prefer kicker rate; fall back to ~95% of TDs. */
 function playerProjectedXp(p: Player, projectedTds: number): number {
   if (p.position !== 'K') return 0
   const f = p.fantasy
-  const inj = injuryFactor(f?.injuryStatus)
+  const inj = playerInj(p)
   if (inj === 0) return 0
   if (f?.homeAway === 'bye') return 0
 
   const st = p.stats || {}
   const g = Math.max(1, st.gamesPlayed || f?.gamesPlayed || f?.games || 1)
   const xpRate = pg(safe(st.xpMade), g) * inj
-  // Cap near projected TDs (can't make more XP than TD attempts on average)
   if (projectedTds > 0) return Math.min(xpRate, projectedTds * 1.05)
   return xpRate
 }
@@ -127,7 +142,6 @@ function oppYaFactor(opp: TeamDefense | undefined, leagueYa: number): number {
   return clamp(ya / Math.max(leagueYa, 1), 0.85, 1.15)
 }
 
-/** Projected safeties from team's DST (2 pts each). Includes 1-pt safety as 1. */
 function projectedSafeties(teamAbbr: string, dstByAbbr: Map<string, TeamDefense>): number {
   const d = dstByAbbr.get(teamAbbr)
   if (!d?.stats) return 0
@@ -135,7 +149,7 @@ function projectedSafeties(teamAbbr: string, dstByAbbr: Map<string, TeamDefense>
   const g = Math.max(1, s.gamesPlayed || s.gameLogs?.length || 1)
   const two = pg(safe(s.safeties), g)
   const one = pg(safe(s.onePtSafeties), g)
-  return two + one * 0.5 // 1-pt safety contributes 1 real point → 0.5 × 2-pt units handled in scoring
+  return two + one * 0.5
 }
 
 export type ProjectedGame = {
@@ -151,6 +165,7 @@ export type ProjectedGame = {
   awayXp: number
   homeSafeties: number
   awaySafeties: number
+  homeFieldApplied: boolean
   winner: string
   spread: number
   total: number
@@ -199,11 +214,9 @@ function teamScoreFromPlayers(
       bestXp = playerProjectedXp(k, tds)
     }
   }
-  // If no kicker XP rate, assume ~95% of TDs converted
   if (bestXp <= 0 && tds > 0) bestXp = tds * 0.95
 
   const safeties = projectedSafeties(teamAbbr, dstByAbbr)
-  // 1-pt safeties: projectedSafeties folds half units; score uses 2× two-pt count + 1× one-pt
   const d = dstByAbbr.get(teamAbbr)
   const g = Math.max(1, d?.stats?.gamesPlayed || d?.stats?.gameLogs?.length || 1)
   const safetyPts =
@@ -241,7 +254,7 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
   for (const { home, away } of games.values()) {
     const h = teamScoreFromPlayers(home, players, dstByAbbr, leaguePa, leagueYa)
     const a = teamScoreFromPlayers(away, players, dstByAbbr, leaguePa, leagueYa)
-    const homeScore = h.score
+    const homeScore = Math.round((h.score + HOME_FIELD_ADVANTAGE) * 10) / 10
     const awayScore = a.score
     const winner =
       homeScore > awayScore ? home : awayScore > homeScore ? away : 'TIE'
@@ -260,6 +273,7 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
       awayXp: a.xp,
       homeSafeties: h.safeties,
       awaySafeties: a.safeties,
+      homeFieldApplied: true,
       winner,
       spread,
       total,
