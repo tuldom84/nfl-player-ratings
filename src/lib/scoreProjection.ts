@@ -7,7 +7,7 @@
  *   + (projected XP made) × 1
  *   + (projected DST safeties) × 2
  *   + home-field advantage (+2.5 for home team)
- *   + QB quality boost: (RPS/100) × (pass TDs per game / 2) × injury weight
+ *   + QB quality boost: (RPS/100) × max(0, passTD/g − INT/g) × injury weight
  *
  * TD contributors (fixed roster construction):
  *   Best 1 QB + 2 RB + 4 WR + 2 TE per team, sorted by production
@@ -17,8 +17,8 @@
  * A pass TD is the same scoring play as the receiver's rec TD —
  * counting both double-counts. Team TDs = rush TDs (any) +
  * receiving TDs (RB/WR/TE only).
- * The small QB boost uses pass-TD rate only as a quality signal, not as
- * additional touchdowns on the scoreboard.
+ * The small QB boost uses net pass TD rate (pass TD − INT) as a quality
+ * signal, not as additional touchdowns on the scoreboard.
  *
  * Matchup TD factor is applied ONCE at team level:
  *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
@@ -164,15 +164,18 @@ function productionKey(p: Player): { tdPg: number; ydsPg: number } {
 
 /**
  * Small quality bump for better QBs — not double-counted TDs.
- * (RPS/100) × (pass TDs per game / 2) × injury weight
+ * (RPS/100) × max(0, passTD/g − INT/g) × injury weight
+ * e.g. Lamar RPS 81.1, 1.5 pass TD/g, 0.3 INT/g → 0.811 × 1.2 ≈ 0.97
  */
 function qbQualityBoost(p: Player, inj: number): number {
   if (inj <= 0) return 0
   const st = p.stats || {}
   const g = Math.max(1, st.gamesPlayed || p.fantasy?.gamesPlayed || p.fantasy?.games || 1)
   const passTdPg = pg(safe(st.passTDs), g)
+  const intPg = pg(safe(st.interceptions), g)
+  const netTdPg = Math.max(0, passTdPg - intPg)
   const rps = typeof p.rps === 'number' && !Number.isNaN(p.rps) ? p.rps : 50
-  return (rps / 100) * (passTdPg / 2) * inj
+  return (rps / 100) * netTdPg * inj
 }
 
 export type TdContributor = {
@@ -200,7 +203,7 @@ export type TeamScoreBreakdown = {
   safetyPts: number
   baseScore: number
   homeField: number
-  /** QB quality: (RPS/100)×(passTD/g÷2)×inj */
+  /** QB quality: (RPS/100)×max(0, passTD/g−INT/g)×inj */
   qbBoost: number
   qbName?: string
   finalScore: number
