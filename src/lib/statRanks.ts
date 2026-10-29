@@ -32,7 +32,7 @@ export type StatKey =
 
 export type StatRowDef = {
   label: string
-  /** Numeric value used for ranking (season total or per-game rate). */
+  /** Season total (or rate) — for per-game rank keys this should be the season total. */
   value: number | undefined
   /** Field key among peers for ranking. */
   key?: StatKey
@@ -40,7 +40,7 @@ export type StatRowDef = {
   perGame?: number | string
   /** If true, rank is not shown (e.g. games played). */
   noRank?: boolean
-  /** Games played for this subject — used when key is ranked per-game. */
+  /** Games played for this subject — required when key is ranked per-game. */
   gamesPlayed?: number
 }
 
@@ -57,19 +57,19 @@ export function ranksAsPerGame(key?: string): boolean {
   return key ? RANK_AS_PER_GAME.has(key) : false
 }
 
-/** Rank of `value` among `values` (1 = best). Ties share the same rank. */
+/**
+ * Rank of `value` among `values` (1 = best).
+ * Uses strict comparison only — never exact float equality (avoids
+ * rounded display values ranking a team worse than its own peer rate).
+ * Ties: equal values share the same rank (competition ranking).
+ */
 export function rankAmong(values: number[], value: number, lowerIsBetter = false): number {
   if (!values.length) return 1
-  const sorted = [...values].sort((a, b) => (lowerIsBetter ? a - b : b - a))
-  const idx = sorted.findIndex((v) => v === value)
-  if (idx < 0) {
-    let better = 0
-    for (const v of values) {
-      if (lowerIsBetter ? v < value : v > value) better++
-    }
-    return better + 1
+  let better = 0
+  for (const v of values) {
+    if (lowerIsBetter ? v < value : v > value) better++
   }
-  return idx + 1
+  return better + 1
 }
 
 export function isLowerBetter(key?: string): boolean {
@@ -140,7 +140,7 @@ export function peerStatValue(
   return typeof v === 'number' && !Number.isNaN(v) ? v : undefined
 }
 
-/** Value used for ranking: per-game rate for PA/YA/etc., otherwise raw. */
+/** Value used for ranking: unrounded per-game rate for PA/YA/etc., otherwise raw. */
 export function peerComparableValue(
   stats: Record<string, number | undefined>,
   key: StatKey
@@ -154,8 +154,34 @@ export function peerComparableValue(
 }
 
 /**
+ * Subject ranking metric for a row.
+ * For per-game keys: always seasonTotal / gamesPlayed (never the rounded display perGame).
+ */
+function subjectComparableValue(row: StatRowDef): number | undefined {
+  if (row.value == null || typeof row.value !== 'number') return undefined
+  if (!row.key || !ranksAsPerGame(row.key)) return row.value
+
+  const gp =
+    row.gamesPlayed && row.gamesPlayed > 0
+      ? row.gamesPlayed
+      : typeof row.season === 'number' && row.value !== 0 && typeof row.perGame === 'number' && row.perGame !== 0
+        ? // recover games if only rate was stored as value
+          Math.round(row.season / row.perGame)
+        : 0
+
+  // Prefer season total from `season` field when value was set to rounded per-game
+  const seasonTotal =
+    typeof row.season === 'number' ? row.season : row.value
+
+  if (gp > 0) return seasonTotal / gp
+
+  // Last resort: if value is already a rate and no gp, use it
+  return row.value
+}
+
+/**
  * Attach position rank for each row among `peers` (same position pool).
- * PA / YA / sacksAllowed are ranked on a per-game basis.
+ * PA / YA / sacksAllowed are ranked on an unrounded per-game basis.
  */
 export function withStatRanks(
   rows: StatRowDef[],
@@ -168,7 +194,6 @@ export function withStatRanks(
       return { ...row }
     }
     const lower = isLowerBetter(row.key)
-    const perGameKey = ranksAsPerGame(row.key)
     const vals: number[] = []
     for (const p of peers) {
       const v = peerComparableValue(p.stats, row.key)
@@ -176,16 +201,8 @@ export function withStatRanks(
     }
     if (!vals.length) return { ...row }
 
-    // Subject value: if ranking per-game and value looks like a season total, convert
-    let subject = row.value
-    if (perGameKey) {
-      // Prefer explicit perGame on the row; else divide by gamesPlayed
-      if (typeof row.perGame === 'number') {
-        subject = row.perGame
-      } else if (row.gamesPlayed && row.gamesPlayed > 0) {
-        subject = row.value / row.gamesPlayed
-      }
-    }
+    const subject = subjectComparableValue(row)
+    if (subject == null) return { ...row }
 
     const rank = rankAmong(vals, subject, lower)
     return { ...row, rank, of: Math.max(n, vals.length) }
