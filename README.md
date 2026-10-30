@@ -10,6 +10,7 @@ Mobile-first Progressive Web App that rates NFL players for **PPR fantasy footba
 
 - **Weighted normalized grades** (0–100) per position based on PPR scoring value
 - **Weekly data lake** – stats pulled from ESPN public APIs **once per week on Tuesday**, then served from static JSON
+- **Betting model tracking** – Tuesday sync snapshots projected game scores and ESPN market lines, then records actual scores and grades ATS / over-under picks the following week
 - Mobile-first UI with bottom navigation, safe-area support, and offline-capable shell (PWA)
 - Rankings by overall / position + player detail views
 - GitHub Actions workflow for automatic Tuesday resync
@@ -69,6 +70,8 @@ The data lake lives at `public/data/latest.json`. The app reads it on load and c
 A GitHub Action (`.github/workflows/weekly-sync.yml`) runs every Tuesday at 10:00 UTC, executes `npm run sync`, and commits the updated `latest.json`.
 
 You can also trigger it manually from the Actions tab.
+
+The Betting page keeps weekly game forecasts in `latest.json`, compares the predicted scores with final scores, and shows model ATS and over/under results when ESPN market lines are available. Tracking starts with the first sync that saves a forecast; earlier projections are not backfilled.
 
 ## Live Demo (GitHub Pages)
 

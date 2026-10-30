@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "sync": "node scripts/sync-data.mjs",
+    "sync": "node --import tsx scripts/sync-data.mjs",
     "lint": "eslint ."
   },
   "dependencies": {

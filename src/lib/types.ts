@@ -177,9 +177,27 @@ export interface DataMeta {
   offenseCount?: number
 }
 
+export interface GamePrediction {
+  season: number
+  week: number
+  eventId: string
+  predictedAt: string
+  home: string
+  away: string
+  predictedHomeScore: number
+  predictedAwayScore: number
+  /** Home-team handicap: negative means the home team is favored. */
+  marketHomeSpread?: number
+  marketTotal?: number
+  oddsProvider?: string
+  actualHomeScore?: number
+  actualAwayScore?: number
+}
+
 export interface DataLake {
   meta: DataMeta
   players: Player[]
   defenses: TeamDefense[]
   teamOffenses?: TeamOffense[]
+  gamePredictions?: GamePrediction[]
 }

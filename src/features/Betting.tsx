@@ -2,10 +2,102 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { projectWeekGames } from '../lib/scoreProjection'
+import type { GamePrediction } from '../lib/types'
 
 /** Nearest half-point (e.g. 5.9 → 6, 5.2 → 5, 5.25 → 5.5). */
 function nearestHalf(n: number): number {
   return Math.round(n * 2) / 2
+}
+
+type PickGrade = 'W' | 'L' | 'P'
+
+interface TrackedPick {
+  pick: string
+  actual: string
+  grade: PickGrade | null
+}
+
+function sideFromMargin(margin: number, home: string, away: string): string {
+  if (Math.abs(margin) < 0.0001) return 'PUSH'
+  return margin > 0 ? home : away
+}
+
+function gradePick(pick: string, actual: string): PickGrade | null {
+  if (pick === 'PASS') return null
+  if (pick === 'PUSH' || actual === 'PUSH') return 'P'
+  return pick === actual ? 'W' : 'L'
+}
+
+function getAtsPick(game: GamePrediction): TrackedPick | null {
+  if (
+    game.marketHomeSpread == null ||
+    game.actualHomeScore == null ||
+    game.actualAwayScore == null
+  ) {
+    return null
+  }
+  const predictedMargin =
+    game.predictedHomeScore - game.predictedAwayScore + game.marketHomeSpread
+  const actualMargin = game.actualHomeScore - game.actualAwayScore + game.marketHomeSpread
+  const pick = sideFromMargin(predictedMargin, game.home, game.away)
+  const actual = sideFromMargin(actualMargin, game.home, game.away)
+  return {
+    pick: pick === 'PUSH' ? 'PASS' : pick,
+    actual,
+    grade: gradePick(pick === 'PUSH' ? 'PASS' : pick, actual),
+  }
+}
+
+function getTotalPick(game: GamePrediction): TrackedPick | null {
+  if (
+    game.marketTotal == null ||
+    game.actualHomeScore == null ||
+    game.actualAwayScore == null
+  ) {
+    return null
+  }
+  const predictedTotal = game.predictedHomeScore + game.predictedAwayScore
+  const actualTotal = game.actualHomeScore + game.actualAwayScore
+  const pick =
+    Math.abs(predictedTotal - game.marketTotal) < 0.0001
+      ? 'PUSH'
+      : predictedTotal > game.marketTotal
+        ? 'OVER'
+        : 'UNDER'
+  const actual =
+    Math.abs(actualTotal - game.marketTotal) < 0.0001
+      ? 'PUSH'
+      : actualTotal > game.marketTotal
+        ? 'OVER'
+        : 'UNDER'
+  return {
+    pick: pick === 'PUSH' ? 'PASS' : pick,
+    actual,
+    grade: gradePick(pick === 'PUSH' ? 'PASS' : pick, actual),
+  }
+}
+
+function formatRecord(picks: TrackedPick[]): string {
+  const graded = picks.filter((pick) => pick.grade != null)
+  const wins = graded.filter((pick) => pick.grade === 'W').length
+  const losses = graded.filter((pick) => pick.grade === 'L').length
+  const pushes = graded.filter((pick) => pick.grade === 'P').length
+  return `${wins}-${losses}-${pushes}`
+}
+
+function gradeColor(grade: PickGrade | null): string {
+  if (grade === 'W') return 'text-emerald-300'
+  if (grade === 'L') return 'text-rose-300'
+  if (grade === 'P') return 'text-slate-400'
+  return 'text-slate-500'
+}
+
+function formatMarketSpread(game: GamePrediction): string {
+  const line = game.marketHomeSpread ?? 0
+  if (Math.abs(line) < 0.0001) return 'PK'
+  const favorite = line < 0 ? game.home : game.away
+  const points = Math.abs(line)
+  return `${favorite} -${points % 1 === 0 ? points.toFixed(0) : points.toFixed(1)}`
 }
 
 /**
@@ -30,6 +122,33 @@ export default function Betting() {
 
   const games = useMemo(() => (data ? projectWeekGames(data) : []), [data])
   const week = data?.meta.projectionWeek || data?.meta.week
+  const trackedGames = useMemo(
+    () =>
+      (data?.gamePredictions || [])
+        .filter((game) => game.actualHomeScore != null && game.actualAwayScore != null)
+        .sort(
+          (a, b) =>
+            b.season - a.season ||
+            b.week - a.week ||
+            b.predictedAt.localeCompare(a.predictedAt)
+        ),
+    [data]
+  )
+  const atsPicks = trackedGames.map(getAtsPick).filter((pick): pick is TrackedPick => pick != null)
+  const totalPicks = trackedGames
+    .map(getTotalPick)
+    .filter((pick): pick is TrackedPick => pick != null)
+  const averageScoreError =
+    trackedGames.length > 0
+      ? trackedGames.reduce(
+          (sum, game) =>
+            sum +
+            (Math.abs(game.predictedHomeScore - game.actualHomeScore!) +
+              Math.abs(game.predictedAwayScore - game.actualAwayScore!)) /
+              2,
+          0
+        ) / trackedGames.length
+      : null
 
   if (loading) {
     return <div className="p-6 text-slate-400">Loading projections…</div>
@@ -148,6 +267,90 @@ export default function Betting() {
           )
         })}
       </ul>
+
+      <section className="mt-8 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+        <h2 className="text-lg font-semibold">Model tracking</h2>
+        <p className="text-[11px] text-slate-500 mt-1 mb-3">
+          Tuesday forecasts compared with final scores and ESPN market lines
+        </p>
+
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-lg bg-slate-950/60 p-2">
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">
+              Avg score error
+            </div>
+            <div className="text-sm font-semibold tabular-nums text-slate-200">
+              {averageScoreError == null ? '—' : `${averageScoreError.toFixed(1)} pts`}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-950/60 p-2">
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">ATS W-L-P</div>
+            <div className="text-sm font-semibold tabular-nums text-slate-200">
+              {formatRecord(atsPicks)}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-950/60 p-2">
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">O/U W-L-P</div>
+            <div className="text-sm font-semibold tabular-nums text-slate-200">
+              {formatRecord(totalPicks)}
+            </div>
+          </div>
+        </div>
+
+        {trackedGames.length === 0 ? (
+          <p className="text-xs text-slate-500 text-center py-5">
+            No completed forecasts yet. Tuesday syncs will add results after games finish.
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y divide-slate-800">
+            {trackedGames.slice(0, 12).map((game) => {
+              const ats = getAtsPick(game)
+              const total = getTotalPick(game)
+              const scoreError =
+                (Math.abs(game.predictedHomeScore - game.actualHomeScore!) +
+                  Math.abs(game.predictedAwayScore - game.actualAwayScore!)) /
+                2
+              return (
+                <li key={`${game.season}-${game.eventId}`} className="py-3 first:pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-200">
+                      {game.away} @ {game.home}
+                    </span>
+                    <span className="text-slate-500">
+                      {game.season} · Week {game.week}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] tabular-nums text-slate-400">
+                    Pred {game.predictedAwayScore.toFixed(1)}–{game.predictedHomeScore.toFixed(1)}
+                    {' · '}Final {game.actualAwayScore!.toFixed(0)}–{game.actualHomeScore!.toFixed(0)}
+                    {' · '}Avg error {scoreError.toFixed(1)}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                    {ats && (
+                      <span>
+                        ATS {formatMarketSpread(game)} · {ats.pick} / {ats.actual}
+                        {' · '}
+                        <strong className={gradeColor(ats.grade)}>{ats.grade || '—'}</strong>
+                      </span>
+                    )}
+                    {total && (
+                      <span>
+                        O/U {game.marketTotal} · {total.pick} / {total.actual} (
+                        {game.actualHomeScore! + game.actualAwayScore!} pts)
+                        {' · '}
+                        <strong className={gradeColor(total.grade)}>{total.grade || '—'}</strong>
+                      </span>
+                    )}
+                    {!ats && !total && (
+                      <span className="text-slate-500">No market lines were available</span>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

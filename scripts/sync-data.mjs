@@ -32,6 +32,10 @@ import {
   scoreDstSeason,
 } from './sync-lib.mjs'
 import { appendDstGameLogs } from './sync-dst-logs.mjs'
+import { existsSync, readFileSync } from 'fs'
+import { projectWeekGames } from '../src/lib/scoreProjection.ts'
+import { applyScoringSettings } from '../src/lib/rescore.ts'
+import { defaultSettings } from '../src/lib/scoringSettings.ts'
 
 async function teamDefStats(teamId, abbreviation) {
   const stats = {
@@ -118,11 +122,12 @@ async function teamDefStats(teamId, abbreviation) {
   return { stats, offense }
 }
 
-async function loadMatchups(week) {
+async function loadMatchups(week, season = SEASON) {
   const data = await fetchJson(
-    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${week}&seasontype=2&dates=${SEASON}`
+    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${week}&seasontype=2&dates=${season}`
   )
   const map = {}
+  const games = []
   for (const t of data.week?.teamsOnBye || []) {
     map[t.abbreviation] = { opponent: 'BYE', homeAway: 'bye' }
   }
@@ -137,9 +142,47 @@ async function loadMatchups(week) {
     if (h && a) {
       map[h] = { opponent: a, homeAway: 'home' }
       map[a] = { opponent: h, homeAway: 'away' }
+      const status = comps.status?.type || e.status?.type || {}
+      const odds = comps.odds?.[0] || e.odds?.[0]
+      const favoriteHome = odds?.homeTeamOdds?.favorite
+      const spreadValue = odds?.spread
+      let marketHomeSpread
+      if (
+        typeof favoriteHome === 'boolean' &&
+        spreadValue != null &&
+        Number.isFinite(Number(spreadValue))
+      ) {
+        marketHomeSpread = (favoriteHome ? -1 : 1) * Math.abs(Number(spreadValue))
+      } else {
+        const details = String(odds?.details || '').match(/^([A-Z]{2,4})\s+(-?\d+(?:\.\d+)?)\b/)
+        if (details) {
+          const listedLine = Number(details[2])
+          marketHomeSpread = details[1] === h ? listedLine : details[1] === a ? -listedLine : undefined
+        } else if (spreadValue != null && Number.isFinite(Number(spreadValue))) {
+          marketHomeSpread = Number(spreadValue)
+        }
+      }
+      const completed = Boolean(status.completed || status.state === 'post')
+      const hasScore = (score) =>
+        score != null && score !== '' && Number.isFinite(Number(score))
+      games.push({
+        eventId: String(e.id || comps.id || ''),
+        home: h,
+        away: a,
+        homeScore: completed && hasScore(home.score) ? num(home.score) : undefined,
+        awayScore: completed && hasScore(away.score) ? num(away.score) : undefined,
+        completed,
+        pregame: status.state === 'pre',
+        marketHomeSpread,
+        marketTotal:
+          odds?.overUnder != null && Number.isFinite(Number(odds.overUnder))
+            ? Number(odds.overUnder)
+            : undefined,
+        oddsProvider: odds?.provider?.name,
+      })
     }
   }
-  return { map, week: data.week?.number || week }
+  return { map, week: data.week?.number || week, games }
 }
 
 async function loadInjuries() {
@@ -243,6 +286,70 @@ function rawOffenseRps(o) {
   return ppg * 2.2 + ypg * 0.04 + tds * 6 - to * 3
 }
 
+function readPreviousPredictions() {
+  const path = join(DATA_DIR, 'latest.json')
+  if (!existsSync(path)) return []
+  const previous = JSON.parse(readFileSync(path, 'utf8'))
+  if (previous.gamePredictions != null && !Array.isArray(previous.gamePredictions)) {
+    throw new Error('latest.json contains invalid game prediction history')
+  }
+  return previous.gamePredictions || []
+}
+
+async function updatePredictionHistory(previousPredictions, lake, currentSchedule, now) {
+  const predictions = [...previousPredictions]
+  const byEvent = new Set(
+    predictions.map((prediction) => `${prediction.season}:${prediction.eventId}`)
+  )
+
+  const pendingSchedules = new Set(
+    predictions
+      .filter((prediction) => prediction.actualHomeScore == null || prediction.actualAwayScore == null)
+      .map((prediction) => `${prediction.season}:${prediction.week}`)
+  )
+  const schedules = new Map([[`${SEASON}:${lake.meta.projectionWeek}`, currentSchedule]])
+  for (const key of pendingSchedules) {
+    if (!schedules.has(key)) {
+      const [season, week] = key.split(':').map(Number)
+      schedules.set(key, await loadMatchups(week, season))
+    }
+  }
+
+  for (const prediction of predictions) {
+    if (prediction.actualHomeScore != null && prediction.actualAwayScore != null) continue
+    const game = schedules
+      .get(`${prediction.season}:${prediction.week}`)
+      ?.games.find((item) => item.eventId === prediction.eventId)
+    if (game?.completed && game.homeScore != null && game.awayScore != null) {
+      prediction.actualHomeScore = game.homeScore
+      prediction.actualAwayScore = game.awayScore
+    }
+  }
+
+  const normalizedLake = applyScoringSettings(lake, defaultSettings())
+  for (const projected of projectWeekGames(normalizedLake)) {
+    const game = currentSchedule.games.find(
+      (item) => item.home === projected.home && item.away === projected.away && item.pregame
+    )
+    if (!game?.eventId || byEvent.has(`${SEASON}:${game.eventId}`)) continue
+    byEvent.add(`${SEASON}:${game.eventId}`)
+    predictions.push({
+      season: SEASON,
+      week: lake.meta.projectionWeek,
+      eventId: game.eventId,
+      predictedAt: now.toISOString(),
+      home: projected.home,
+      away: projected.away,
+      predictedHomeScore: projected.homeScore,
+      predictedAwayScore: projected.awayScore,
+      marketHomeSpread: game.marketHomeSpread,
+      marketTotal: game.marketTotal,
+      oddsProvider: game.oddsProvider,
+    })
+  }
+  return predictions
+}
+
 async function main() {
   console.log('ESPN sync', SEASON)
   mkdirSync(DATA_DIR, { recursive: true })
@@ -264,7 +371,8 @@ async function main() {
   if (midweekGap) projectionWeek = espnWeek + 1
   console.log('ESPN week', espnWeek, 'ET day', etDay, 'projection week', projectionWeek)
 
-  const { map: matchups } = await loadMatchups(projectionWeek)
+  const currentSchedule = await loadMatchups(projectionWeek)
+  const { map: matchups } = currentSchedule
   console.log('Matchups loaded', Object.keys(matchups).length)
   const injuries = await loadInjuries()
   console.log('Injuries', Object.keys(injuries).length)
@@ -396,6 +504,12 @@ async function main() {
     defenses: gDef,
     teamOffenses,
   }
+  lake.gamePredictions = await updatePredictionHistory(
+    readPreviousPredictions(),
+    lake,
+    currentSchedule,
+    now
+  )
   writeFileSync(join(DATA_DIR, 'latest.json'), JSON.stringify(lake))
   console.log('Wrote', graded.length, 'players (2026 GP only)')
   graded.slice(0, 5).forEach((p) =>

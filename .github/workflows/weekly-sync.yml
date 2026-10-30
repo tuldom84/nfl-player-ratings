@@ -21,8 +21,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run ESPN data sync
-        run: node scripts/sync-data.mjs
+        run: npm run sync
 
       - name: Commit updated data lake
         id: commit
