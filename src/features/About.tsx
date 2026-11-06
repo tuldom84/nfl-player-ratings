@@ -82,6 +82,8 @@ export default function About() {
         game. Questionable or day-to-day TDs count at 90%, Doubtful at 70%. Out, IR, and
         suspension are not penalized. RB, WR, and TE TDs/g are multiplied by availability
         (games played / team games). The QB is not. Pass/rec TDs counted once (QB pass + all rush).
+        The betting log keeps every Tuesday forecast. Open any saved week for that slate's results,
+        plus the season and all-time ATS, over/under, and straight-up records.
       </p>
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Data cadence</h2>
