@@ -27,18 +27,19 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
             urlPattern: /\/data\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
-              cacheName: 'nfl-data-cache',
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 8 }
-            }
-          }
-        ]
-      }
+              cacheName: 'nfl-data-v2',
+              networkTimeoutSeconds: 4,
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 8 },
+            },
+          },
+        ],
+      },
     })
   ],
   server: {

@@ -3,7 +3,7 @@ import type { DataLake, Player } from '../lib/types'
 import { loadScoringSettings, SCORING_CHANGE_EVENT } from '../lib/scoringSettings'
 import { applyScoringSettings } from '../lib/rescore'
 
-const CACHE_KEY = 'nfl-ratings-datalake-v4'
+const CACHE_KEY = 'nfl-ratings-datalake-v5'
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7 // 1 week
 
 function withScoring(lake: DataLake): DataLake {

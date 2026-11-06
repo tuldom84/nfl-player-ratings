@@ -28,42 +28,38 @@ function gradePick(pick: string, actual: string): PickGrade | null {
   return pick === actual ? 'W' : 'L'
 }
 
+function isFinal(game: GamePrediction): boolean {
+  return game.actualHomeScore != null && game.actualAwayScore != null
+}
+
 function getAtsPick(game: GamePrediction): TrackedPick | null {
-  if (
-    game.marketHomeSpread == null ||
-    game.actualHomeScore == null ||
-    game.actualAwayScore == null
-  ) {
-    return null
-  }
+  if (game.marketHomeSpread == null) return null
   const predictedMargin =
     game.predictedHomeScore - game.predictedAwayScore + game.marketHomeSpread
-  const actualMargin = game.actualHomeScore - game.actualAwayScore + game.marketHomeSpread
   const pick = sideFromMargin(predictedMargin, game.home, game.away)
+  const modelPick = pick === 'PUSH' ? 'PASS' : pick
+  if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
+  const actualMargin = game.actualHomeScore! - game.actualAwayScore! + game.marketHomeSpread
   const actual = sideFromMargin(actualMargin, game.home, game.away)
   return {
-    pick: pick === 'PUSH' ? 'PASS' : pick,
+    pick: modelPick,
     actual,
-    grade: gradePick(pick === 'PUSH' ? 'PASS' : pick, actual),
+    grade: gradePick(modelPick, actual),
   }
 }
 
 function getTotalPick(game: GamePrediction): TrackedPick | null {
-  if (
-    game.marketTotal == null ||
-    game.actualHomeScore == null ||
-    game.actualAwayScore == null
-  ) {
-    return null
-  }
+  if (game.marketTotal == null) return null
   const predictedTotal = game.predictedHomeScore + game.predictedAwayScore
-  const actualTotal = game.actualHomeScore + game.actualAwayScore
   const pick =
     Math.abs(predictedTotal - game.marketTotal) < 0.0001
       ? 'PUSH'
       : predictedTotal > game.marketTotal
         ? 'OVER'
         : 'UNDER'
+  const modelPick = pick === 'PUSH' ? 'PASS' : pick
+  if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
+  const actualTotal = game.actualHomeScore! + game.actualAwayScore!
   const actual =
     Math.abs(actualTotal - game.marketTotal) < 0.0001
       ? 'PUSH'
@@ -71,9 +67,9 @@ function getTotalPick(game: GamePrediction): TrackedPick | null {
         ? 'OVER'
         : 'UNDER'
   return {
-    pick: pick === 'PUSH' ? 'PASS' : pick,
+    pick: modelPick,
     actual,
-    grade: gradePick(pick === 'PUSH' ? 'PASS' : pick, actual),
+    grade: gradePick(modelPick, actual),
   }
 }
 
@@ -124,30 +120,33 @@ export default function Betting() {
   const week = data?.meta.projectionWeek || data?.meta.week
   const trackedGames = useMemo(
     () =>
-      (data?.gamePredictions || [])
-        .filter((game) => game.actualHomeScore != null && game.actualAwayScore != null)
-        .sort(
-          (a, b) =>
-            b.season - a.season ||
-            b.week - a.week ||
-            b.predictedAt.localeCompare(a.predictedAt)
-        ),
+      [...(data?.gamePredictions || [])].sort((a, b) => {
+        const aFinal = isFinal(a) ? 1 : 0
+        const bFinal = isFinal(b) ? 1 : 0
+        return (
+          bFinal - aFinal ||
+          b.season - a.season ||
+          b.week - a.week ||
+          a.away.localeCompare(b.away)
+        )
+      }),
     [data]
   )
-  const atsPicks = trackedGames.map(getAtsPick).filter((pick): pick is TrackedPick => pick != null)
-  const totalPicks = trackedGames
+  const completedGames = trackedGames.filter(isFinal)
+  const atsPicks = completedGames.map(getAtsPick).filter((pick): pick is TrackedPick => pick != null)
+  const totalPicks = completedGames
     .map(getTotalPick)
     .filter((pick): pick is TrackedPick => pick != null)
   const averageScoreError =
-    trackedGames.length > 0
-      ? trackedGames.reduce(
+    completedGames.length > 0
+      ? completedGames.reduce(
           (sum, game) =>
             sum +
             (Math.abs(game.predictedHomeScore - game.actualHomeScore!) +
               Math.abs(game.predictedAwayScore - game.actualAwayScore!)) /
               2,
           0
-        ) / trackedGames.length
+        ) / completedGames.length
       : null
 
   if (loading) {
@@ -271,7 +270,7 @@ export default function Betting() {
       <section className="mt-8 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
         <h2 className="text-lg font-semibold">Model tracking</h2>
         <p className="text-[11px] text-slate-500 mt-1 mb-3">
-          Tuesday forecasts compared with final scores and ESPN market lines
+          Tuesday forecasts saved in the data lake, then graded against final scores and ESPN lines
         </p>
 
         <div className="grid grid-cols-3 gap-2 text-center">
@@ -299,17 +298,20 @@ export default function Betting() {
 
         {trackedGames.length === 0 ? (
           <p className="text-xs text-slate-500 text-center py-5">
-            No completed forecasts yet. Tuesday syncs will add results after games finish.
+            No forecasts saved yet. The Tuesday sync stores each week's model scores and lines,
+            then fills in final scores the next week.
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-slate-800">
-            {trackedGames.slice(0, 12).map((game) => {
+            {trackedGames.slice(0, 20).map((game) => {
               const ats = getAtsPick(game)
               const total = getTotalPick(game)
-              const scoreError =
-                (Math.abs(game.predictedHomeScore - game.actualHomeScore!) +
-                  Math.abs(game.predictedAwayScore - game.actualAwayScore!)) /
-                2
+              const final = isFinal(game)
+              const scoreError = final
+                ? (Math.abs(game.predictedHomeScore - game.actualHomeScore!) +
+                    Math.abs(game.predictedAwayScore - game.actualAwayScore!)) /
+                  2
+                : null
               return (
                 <li key={`${game.season}-${game.eventId}`} className="py-3 first:pt-1">
                   <div className="flex items-center justify-between text-xs">
@@ -318,25 +320,36 @@ export default function Betting() {
                     </span>
                     <span className="text-slate-500">
                       {game.season} · Week {game.week}
+                      {final ? '' : ' · Pending'}
                     </span>
                   </div>
                   <div className="mt-1 text-[11px] tabular-nums text-slate-400">
                     Pred {game.predictedAwayScore.toFixed(1)}–{game.predictedHomeScore.toFixed(1)}
-                    {' · '}Final {game.actualAwayScore!.toFixed(0)}–{game.actualHomeScore!.toFixed(0)}
-                    {' · '}Avg error {scoreError.toFixed(1)}
+                    {final ? (
+                      <>
+                        {' · '}Final {game.actualAwayScore!.toFixed(0)}–
+                        {game.actualHomeScore!.toFixed(0)}
+                        {' · '}Avg error {scoreError!.toFixed(1)}
+                      </>
+                    ) : (
+                      <> · Final not in yet</>
+                    )}
                   </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
                     {ats && (
                       <span>
-                        ATS {formatMarketSpread(game)} · {ats.pick} / {ats.actual}
+                        ATS {formatMarketSpread(game)} · {ats.pick}
+                        {final ? ` / ${ats.actual}` : ''}
                         {' · '}
                         <strong className={gradeColor(ats.grade)}>{ats.grade || '—'}</strong>
                       </span>
                     )}
                     {total && (
                       <span>
-                        O/U {game.marketTotal} · {total.pick} / {total.actual} (
-                        {game.actualHomeScore! + game.actualAwayScore!} pts)
+                        O/U {game.marketTotal} · {total.pick}
+                        {final
+                          ? ` / ${total.actual} (${game.actualHomeScore! + game.actualAwayScore!} pts)`
+                          : ''}
                         {' · '}
                         <strong className={gradeColor(total.grade)}>{total.grade || '—'}</strong>
                       </span>
