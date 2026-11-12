@@ -135,8 +135,8 @@ export default function BettingLog({ predictions }: { predictions: GamePredictio
       <h2 className="text-lg font-semibold">Betting log</h2>
       <p className="text-[11px] text-slate-500 mt-1 mb-3">
         Every Tuesday forecast, by week. Spread, total, and straight-up picks use each predicted
-        score rounded to the nearest point (20.5–23.2 plays as 21–23). Records count finished
-        games only. Win % ignores pushes.
+        score rounded to the nearest point (20.5–23.2 plays as 21–23). A push we called counts
+        as a win. Any other push is a draw.
       </p>
 
       <h3 className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">All-time</h3>

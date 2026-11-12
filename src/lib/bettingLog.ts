@@ -13,7 +13,7 @@ export interface RecordLine {
   losses: number
   pushes: number
   decided: number
-  /** Wins divided by wins + losses. Null when nothing has been decided. */
+  /** (wins + half a push) / all graded games. A called push is already a win. */
   winPct: number | null
 }
 
@@ -70,7 +70,9 @@ function sideFromMargin(margin: number, home: string, away: string): string {
 
 function gradePick(pick: string, actual: string): PickGrade | null {
   if (pick === 'PASS') return null
-  if (pick === 'PUSH' || actual === 'PUSH') return 'P'
+  // Calling the push is a win. Any other push is a draw.
+  if (pick === 'PUSH') return actual === 'PUSH' ? 'W' : 'L'
+  if (actual === 'PUSH') return 'P'
   return pick === actual ? 'W' : 'L'
 }
 
@@ -79,11 +81,10 @@ export function getAtsPick(game: GamePrediction): TrackedPick | null {
   const predicted = roundedPrediction(game)
   const predictedMargin = predicted.home - predicted.away + game.marketHomeSpread
   const pick = sideFromMargin(predictedMargin, game.home, game.away)
-  const modelPick = pick === 'PUSH' ? 'PASS' : pick
-  if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
+  if (!isFinal(game)) return { pick, actual: '—', grade: null }
   const actualMargin = game.actualHomeScore! - game.actualAwayScore! + game.marketHomeSpread
   const actual = sideFromMargin(actualMargin, game.home, game.away)
-  return { pick: modelPick, actual, grade: gradePick(modelPick, actual) }
+  return { pick, actual, grade: gradePick(pick, actual) }
 }
 
 export function getTotalPick(game: GamePrediction): TrackedPick | null {
@@ -96,8 +97,7 @@ export function getTotalPick(game: GamePrediction): TrackedPick | null {
       : predictedTotal > game.marketTotal
         ? 'OVER'
         : 'UNDER'
-  const modelPick = pick === 'PUSH' ? 'PASS' : pick
-  if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
+  if (!isFinal(game)) return { pick, actual: '—', grade: null }
   const actualTotal = game.actualHomeScore! + game.actualAwayScore!
   const actual =
     Math.abs(actualTotal - game.marketTotal) < 0.0001
@@ -105,21 +105,19 @@ export function getTotalPick(game: GamePrediction): TrackedPick | null {
       : actualTotal > game.marketTotal
         ? 'OVER'
         : 'UNDER'
-  return { pick: modelPick, actual, grade: gradePick(modelPick, actual) }
+  return { pick, actual, grade: gradePick(pick, actual) }
 }
 
 /** Model winner from the projected score, graded against the final score. */
 export function getStraightUpPick(game: GamePrediction): TrackedPick {
   const predicted = roundedPrediction(game)
   const predictedMargin = predicted.home - predicted.away
-  const pick =
-    predictedMargin === 0 ? 'PUSH' : predictedMargin > 0 ? game.home : game.away
-  const modelPick = pick === 'PUSH' ? 'PASS' : pick
-  if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
+  const pick = predictedMargin === 0 ? 'PUSH' : predictedMargin > 0 ? game.home : game.away
+  if (!isFinal(game)) return { pick, actual: '—', grade: null }
   const actualMargin = game.actualHomeScore! - game.actualAwayScore!
   const actual =
     Math.abs(actualMargin) < 0.0001 ? 'PUSH' : actualMargin > 0 ? game.home : game.away
-  return { pick: modelPick, actual, grade: gradePick(modelPick, actual) }
+  return { pick, actual, grade: gradePick(pick, actual) }
 }
 
 export function formatModelSpread(game: GamePrediction): string {
@@ -157,13 +155,14 @@ function tally(picks: Array<TrackedPick | null>): RecordLine {
     else if (pick.grade === 'L') losses++
     else pushes++
   }
-  const decided = wins + losses
+  const graded = wins + losses + pushes
   return {
     wins,
     losses,
     pushes,
-    decided,
-    winPct: decided > 0 ? wins / decided : null,
+    decided: graded,
+    // An uncalled push is a draw (half). A called push was already graded as a win.
+    winPct: graded > 0 ? (wins + pushes * 0.5) / graded : null,
   }
 }
 
