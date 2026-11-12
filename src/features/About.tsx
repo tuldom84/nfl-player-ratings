@@ -81,7 +81,9 @@ export default function About() {
         team and subtracted from the opponent. TOD/g is takeaways per game minus giveaways per
         game. Questionable or day-to-day TDs count at 90%, Doubtful at 70%. Out, IR, and
         suspension are not penalized. RB, WR, and TE TDs/g are multiplied by availability
-        (games played / team games). The QB is not. Pass/rec TDs counted once (QB pass + all rush).
+        (games played / team games). The QB is not. If that player TD sum is under 80% of the
+        team's offensive TDs/g, raw TDs is the average of the two before the matchup factor.
+        XP equals adjusted TDs. Pass/rec TDs counted once (QB pass + all rush).
         The betting log keeps every Tuesday forecast. Open any saved week for that slate's results,
         plus the season and all-time ATS, over/under, and straight-up records.
       </p>

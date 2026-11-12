@@ -4,7 +4,7 @@
  * Team score =
  *   (matchup-adjusted offensive TDs) × 6
  *   + (projected kicker FG made × TD factor) × 3
- *   + (projected XP made) × 1
+ *   + (adjusted TDs) × 1   // 1 XP per adjusted TD
  *   + (projected DST safeties) × 2
  *   + home-field advantage (+2.5 for home team)
  *   + QB quality boost: (RPS/100) × max(0, passTD/g − INT/g)
@@ -32,6 +32,11 @@
  * Matchup TD factor (opp points-allowed vs league average) is applied to:
  *   rawTds → tds = rawTds * tdFactor → tdPts = tds * 6
  *   projected FG made → fg * tdFactor (defense quality affects FG chances)
+ *   XP = adjusted TDs (one extra point per TD)
+ *
+ * Before the matchup factor, raw TDs are the selected-player sum. If that
+ * sum is under 80% of the team's offensive TDs/g (pass + rush), raw TDs
+ * become the average of the player sum and the team rate.
  *
  * If a required slot is missing or on bye:
  *   WR → 0 (no contribution)
@@ -233,6 +238,10 @@ export type TeamScoreBreakdown = {
   abbr: string
   /** Unadjusted sum of player/placeholder TDs (before matchup factor) */
   rawTds: number
+  /** Team offensive TDs/g (pass + rush) used for the 80% floor. */
+  offTdPg: number
+  /** True when player raw TDs were under 80% of offTdPg and averaged with it. */
+  rawTdBlended: boolean
   /** rawTds * tdFactor */
   tds: number
   tdPts: number
@@ -259,6 +268,16 @@ export type TeamScoreBreakdown = {
   kickerName?: string
 }
 
+/** Team offensive TDs per game (pass + rush). 0 when the offense row is missing. */
+function offenseTdPerGame(offense?: TeamOffense): number {
+  const s = offense?.stats
+  if (!s) return 0
+  const g = Math.max(1, s.gamesPlayed || 1)
+  const scoring = safe(s.passTDs) + safe(s.rushTDs)
+  if (scoring > 0) return scoring / g
+  return safe(s.totalTDs) / g
+}
+
 function teamBreakdown(
   teamAbbr: string,
   isHome: boolean,
@@ -266,11 +285,14 @@ function teamBreakdown(
   dstByAbbr: Map<string, TeamDefense>,
   leaguePa: number,
   leagueYa: number,
-  leagueTdByPos: Record<string, number>
+  leagueTdByPos: Record<string, number>,
+  offense?: TeamOffense
 ): TeamScoreBreakdown {
   const empty: TeamScoreBreakdown = {
     abbr: teamAbbr,
     rawTds: 0,
+    offTdPg: 0,
+    rawTdBlended: false,
     tds: 0,
     tdPts: 0,
     fg: 0,
@@ -396,13 +418,21 @@ function teamBreakdown(
 
   contributors.sort((a, b) => b.tds - a.tds)
 
-  // Apply matchup TD factor ONCE at team level
+  // If the constructed roster is short of the team's real scoring rate, blend.
+  const offTdPg = offenseTdPerGame(offense)
+  let rawTdBlended = false
+  if (offTdPg > 0 && rawTds < offTdPg * 0.8) {
+    rawTds = (rawTds + offTdPg) / 2
+    rawTdBlended = true
+  }
+
+  // Apply matchup TD factor ONCE at team level. XP is 1 per adjusted TD.
   const tds = rawTds * tdF
+  const xp = tds
 
   // Kicker — FG also scaled by TD factor (defense quality / scoring environment)
   const kickers = roster.filter((p) => p.position === 'K')
   let bestFg = 0
-  let bestXp = 0
   let bestMade = -1
   let kickerName: string | undefined
   for (const k of kickers) {
@@ -419,7 +449,6 @@ function teamBreakdown(
     const inj = playerInj(k)
     if (k.fantasy?.homeAway === 'bye') {
       bestFg = 0
-      bestXp = 0
       kickerName = k.name
       continue
     }
@@ -433,11 +462,8 @@ function teamBreakdown(
         safe(st.fgMade60) || safe(st.fgMade)
     // TD factor (opp PA) scales FG opportunities with defense quality
     bestFg = pg(fg, g) * tdF * inj
-    const xpRate = pg(safe(st.xpMade), g) * inj
-    bestXp = tds > 0 ? Math.min(xpRate, tds * 1.05) : xpRate
     kickerName = k.name
   }
-  if (bestXp <= 0 && tds > 0) bestXp = tds * 0.95
 
   const d = dstByAbbr.get(teamAbbr)
   const dg = Math.max(1, d?.stats?.gamesPlayed || d?.stats?.gameLogs?.length || 1)
@@ -448,7 +474,7 @@ function teamBreakdown(
 
   const tdPts = tds * 6
   const fgPts = bestFg * 3
-  const xpPts = bestXp * 1
+  const xpPts = xp * 1
   const qbBoostR = r2(qbBoost)
   const baseScore = r1(tdPts + fgPts + xpPts + safetyPts)
   const homeField = isHome ? HOME_FIELD_ADVANTAGE : 0
@@ -457,11 +483,13 @@ function teamBreakdown(
   return {
     abbr: teamAbbr,
     rawTds: r2(rawTds),
+    offTdPg: r2(offTdPg),
+    rawTdBlended,
     tds: r2(tds),
     tdPts: r1(tdPts),
     fg: r2(bestFg),
     fgPts: r1(fgPts),
-    xp: r2(bestXp),
+    xp: r2(xp),
     xpPts: r1(xpPts),
     safeties: r2(safetyCount),
     safetyPts: r1(safetyPts),
@@ -576,10 +604,29 @@ export function projectWeekGames(lake: DataLake): ProjectedGame[] {
     if (!games.has(key)) games.set(key, { home, away })
   }
 
+  const offBy = new Map((lake.teamOffenses || []).map((o) => [o.abbreviation, o]))
   const out: ProjectedGame[] = []
   for (const { home, away } of games.values()) {
-    const rawH = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
-    const rawA = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+    const rawH = teamBreakdown(
+      home,
+      true,
+      players,
+      dstByAbbr,
+      leaguePa,
+      leagueYa,
+      leagueTdByPos,
+      offBy.get(home)
+    )
+    const rawA = teamBreakdown(
+      away,
+      false,
+      players,
+      dstByAbbr,
+      leaguePa,
+      leagueYa,
+      leagueTdByPos,
+      offBy.get(away)
+    )
     const { home: h, away: a } = applyTurnoverDifferential(
       rawH,
       rawA,
@@ -627,8 +674,27 @@ export function getGameDetail(
   const leagueYa = leagueYaPg(defenses)
   const leagueTdByPos = leagueTdPerGameByPos(players)
 
-  const rawH = teamBreakdown(home, true, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
-  const rawA = teamBreakdown(away, false, players, dstByAbbr, leaguePa, leagueYa, leagueTdByPos)
+  const offBy = new Map((lake.teamOffenses || []).map((o) => [o.abbreviation, o]))
+  const rawH = teamBreakdown(
+    home,
+    true,
+    players,
+    dstByAbbr,
+    leaguePa,
+    leagueYa,
+    leagueTdByPos,
+    offBy.get(home)
+  )
+  const rawA = teamBreakdown(
+    away,
+    false,
+    players,
+    dstByAbbr,
+    leaguePa,
+    leagueYa,
+    leagueTdByPos,
+    offBy.get(away)
+  )
   const { home: h, away: a } = applyTurnoverDifferential(
     rawH,
     rawA,
