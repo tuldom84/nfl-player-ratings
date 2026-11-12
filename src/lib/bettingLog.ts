@@ -51,6 +51,18 @@ export function isFinal(game: GamePrediction): boolean {
   return game.actualHomeScore != null && game.actualAwayScore != null
 }
 
+/** Nearest point. 20.5 → 21, 23.2 → 23. Picks use these, not the raw tenth. */
+export function roundedScore(n: number): number {
+  return Math.round(n)
+}
+
+export function roundedPrediction(game: GamePrediction): { home: number; away: number } {
+  return {
+    home: roundedScore(game.predictedHomeScore),
+    away: roundedScore(game.predictedAwayScore),
+  }
+}
+
 function sideFromMargin(margin: number, home: string, away: string): string {
   if (Math.abs(margin) < 0.0001) return 'PUSH'
   return margin > 0 ? home : away
@@ -64,8 +76,8 @@ function gradePick(pick: string, actual: string): PickGrade | null {
 
 export function getAtsPick(game: GamePrediction): TrackedPick | null {
   if (game.marketHomeSpread == null) return null
-  const predictedMargin =
-    game.predictedHomeScore - game.predictedAwayScore + game.marketHomeSpread
+  const predicted = roundedPrediction(game)
+  const predictedMargin = predicted.home - predicted.away + game.marketHomeSpread
   const pick = sideFromMargin(predictedMargin, game.home, game.away)
   const modelPick = pick === 'PUSH' ? 'PASS' : pick
   if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
@@ -76,7 +88,8 @@ export function getAtsPick(game: GamePrediction): TrackedPick | null {
 
 export function getTotalPick(game: GamePrediction): TrackedPick | null {
   if (game.marketTotal == null) return null
-  const predictedTotal = game.predictedHomeScore + game.predictedAwayScore
+  const predicted = roundedPrediction(game)
+  const predictedTotal = predicted.home + predicted.away
   const pick =
     Math.abs(predictedTotal - game.marketTotal) < 0.0001
       ? 'PUSH'
@@ -97,15 +110,24 @@ export function getTotalPick(game: GamePrediction): TrackedPick | null {
 
 /** Model winner from the projected score, graded against the final score. */
 export function getStraightUpPick(game: GamePrediction): TrackedPick {
-  const predictedMargin = game.predictedHomeScore - game.predictedAwayScore
+  const predicted = roundedPrediction(game)
+  const predictedMargin = predicted.home - predicted.away
   const pick =
-    Math.abs(predictedMargin) < 0.05 ? 'PUSH' : predictedMargin > 0 ? game.home : game.away
+    predictedMargin === 0 ? 'PUSH' : predictedMargin > 0 ? game.home : game.away
   const modelPick = pick === 'PUSH' ? 'PASS' : pick
   if (!isFinal(game)) return { pick: modelPick, actual: '—', grade: null }
   const actualMargin = game.actualHomeScore! - game.actualAwayScore!
   const actual =
     Math.abs(actualMargin) < 0.0001 ? 'PUSH' : actualMargin > 0 ? game.home : game.away
   return { pick: modelPick, actual, grade: gradePick(modelPick, actual) }
+}
+
+export function formatModelSpread(game: GamePrediction): string {
+  const predicted = roundedPrediction(game)
+  const margin = predicted.home - predicted.away
+  if (margin === 0) return 'PICK'
+  const favorite = margin > 0 ? game.home : game.away
+  return `${favorite} -${Math.abs(margin)}`
 }
 
 export function formatMarketSpread(game: GamePrediction): string {

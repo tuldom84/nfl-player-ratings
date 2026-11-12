@@ -4,25 +4,16 @@ import { useDataLake } from '../hooks/useDataLake'
 import { projectWeekGames } from '../lib/scoreProjection'
 import BettingLog from './BettingLog'
 
-function nearestHalf(n: number): number {
-  return Math.round(n * 2) / 2
-}
-
 /**
- * Traditional betting line: favorite listed with a minus (points they give),
- * rounded to nearest half. Actual model margin in parentheses.
- * e.g. WSH -6(+5.9)
+ * Model line from scores rounded to the nearest point.
+ * Raw margin stays in parentheses. e.g. NO -2(+2.7)
  */
 function formatSpread(home: string, away: string, homeScore: number, awayScore: number): string {
-  const margin = homeScore - awayScore
-  if (Math.abs(margin) < 0.05) return 'PICK'
+  const margin = Math.round(homeScore) - Math.round(awayScore)
+  const raw = homeScore - awayScore
+  if (margin === 0) return `PICK(+${raw.toFixed(1)})`
   const fav = margin > 0 ? home : away
-  const actual = Math.abs(margin)
-  const line = nearestHalf(actual)
-  // Avoid -0
-  const lineStr = line === 0 ? 'PICK' : `-${line % 1 === 0 ? line.toFixed(0) : line.toFixed(1)}`
-  if (lineStr === 'PICK') return 'PICK'
-  return `${fav} ${lineStr}(+${actual.toFixed(1)})`
+  return `${fav} -${Math.abs(margin)}(+${Math.abs(raw).toFixed(1)})`
 }
 
 export default function Betting() {
@@ -64,7 +55,7 @@ export default function Betting() {
         injury cut. If the player TD sum is under 80% of the team's offensive TDs/g, raw TDs
         is the average of those two before the matchup factor. XP equals adjusted TDs (1 per TD).
         Pass/rec TDs counted once (no double-count of QB pass TDs).
-        Spreads shown as traditional favorite line (nearest ½) with model margin in parentheses.
+        Spreads shown from each score rounded to the nearest point, with the raw margin in parentheses.
         </p>
       </details>
 

@@ -3,12 +3,14 @@ import type { GamePrediction } from '../lib/types'
 import {
   buildBettingLog,
   formatMarketSpread,
+  formatModelSpread,
   formatRecord,
   formatWinPct,
   getAtsPick,
   getStraightUpPick,
   getTotalPick,
   isFinal,
+  roundedPrediction,
   scoreError,
   type BettingSummary,
   type PickGrade,
@@ -58,9 +60,10 @@ function GameRow({ game }: { game: GamePrediction }) {
   const straight = getStraightUpPick(game)
   const final = isFinal(game)
   const error = scoreError(game)
+  const predicted = roundedPrediction(game)
   const rows = [
     ats && {
-      label: `ATS ${formatMarketSpread(game)}`,
+      label: `ATS ${formatMarketSpread(game)} · model ${formatModelSpread(game)}`,
       pick: ats.pick,
       actual: final ? ats.actual : null,
       grade: ats.grade,
@@ -88,7 +91,11 @@ function GameRow({ game }: { game: GamePrediction }) {
         <span className="text-slate-500 shrink-0">{final ? 'Final' : 'Pending'}</span>
       </div>
       <div className="mt-1 text-[11px] tabular-nums text-slate-400">
-        Pred {game.predictedAwayScore.toFixed(1)}–{game.predictedHomeScore.toFixed(1)}
+        Pred {predicted.away}–{predicted.home}
+        <span className="text-slate-500">
+          {' '}
+          ({game.predictedAwayScore.toFixed(1)}–{game.predictedHomeScore.toFixed(1)})
+        </span>
         {final ? (
           <>
             {' · '}Final {game.actualAwayScore!.toFixed(0)}–{game.actualHomeScore!.toFixed(0)}
@@ -127,7 +134,9 @@ export default function BettingLog({ predictions }: { predictions: GamePredictio
     <section className="mt-8 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
       <h2 className="text-lg font-semibold">Betting log</h2>
       <p className="text-[11px] text-slate-500 mt-1 mb-3">
-        Every Tuesday forecast, by week. Records count finished games only. Win % ignores pushes.
+        Every Tuesday forecast, by week. Spread, total, and straight-up picks use each predicted
+        score rounded to the nearest point (20.5–23.2 plays as 21–23). Records count finished
+        games only. Win % ignores pushes.
       </p>
 
       <h3 className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">All-time</h3>
