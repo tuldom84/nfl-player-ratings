@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Player, TeamDefense } from '../lib/types'
+import { PlayerHeadshot } from '../components/PlayerHeadshot'
 
 function GradeBadge({ grade, label, unit }: { grade: number; label: string; unit?: string }) {
   const cls =
@@ -24,9 +25,7 @@ function PlayerCard({ player, useValue }: { player: Player; useValue?: boolean }
       to={`/player/${player.id}`}
       className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/80 border border-slate-800 active:scale-[0.98] transition-transform"
     >
-      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-lg font-bold text-slate-400">
-        {player.position}
-      </div>
+      <PlayerHeadshot src={player.headshot} name={player.name} position={player.position} size="md" />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-slate-100 truncate">{player.name}</div>
         <div className="text-xs text-slate-400">
@@ -83,7 +82,8 @@ export default function Home() {
       <div className="p-6 text-center">
         <p className="text-rose-400 mb-2">{error || 'No data available'}</p>
         <p className="text-sm text-slate-500">
-          Data is refreshed every Tuesday. Run <code className="bg-slate-800 px-1 rounded">npm run sync</code> to generate the data lake.
+          Data is refreshed Tuesday morning and Friday evening. Run{' '}
+          <code className="bg-slate-800 px-1 rounded">npm run sync</code> to generate the data lake.
         </p>
       </div>
     )
