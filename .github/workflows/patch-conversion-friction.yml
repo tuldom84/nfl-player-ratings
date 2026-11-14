@@ -5,25 +5,24 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Restore and patch scoreProjection
-        run: |
-          set -eux
-          git show 860de8b0d492292548940a088ee0a9476d3c0f81:src/lib/scoreProjection.ts > src/lib/scoreProjection.ts
-          python3 scripts/apply_conversion_friction.py
+      - name: Patch BettingGameDetail UI
+        run: python3 scripts/apply_friction_ui.py
 
-      - name: Commit and push
+      - name: Commit UI and remove temp workflow/scripts
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/scoreProjection.ts
-          git commit -m "Betting: -1 conversion friction on each team base score"
-          git push origin HEAD:main
+          git add src/features/BettingGameDetail.tsx
+          git rm -f .github/workflows/patch-conversion-friction.yml \
+            scripts/apply_conversion_friction.py \
+            scripts/apply_friction_ui.py || true
+          git commit -m "Betting UI: show conversion friction; remove temp patch workflow" || true
+          git push origin HEAD:main || true
