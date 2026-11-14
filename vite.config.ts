@@ -38,6 +38,22 @@ export default defineConfig({
               expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 8 },
             },
           },
+          // ESPN player headshots — stable URLs, long TTL, cache-first
+          {
+            urlPattern: ({ url }) =>
+              /espncdn\.com$/i.test(url.hostname) &&
+              (/\/i\/headshots\//i.test(url.pathname) ||
+                /\/combiner\/i/i.test(url.pathname)),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'espn-headshots-v1',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 400,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+              },
+            },
+          },
         ],
       },
     })
