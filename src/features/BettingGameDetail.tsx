@@ -491,6 +491,10 @@ export default function BettingGameDetail() {
                   </li>
                 )
               })}
+              <li className="flex justify-between gap-1 px-2 py-1.5 border-t border-slate-700 bg-slate-900/50 font-medium">
+                <span className="text-slate-400">Sum</span>
+                <span className="tabular-nums text-slate-200">{side.playerTds.toFixed(2)}</span>
+              </li>
             </ul>
           </div>
         ))}
