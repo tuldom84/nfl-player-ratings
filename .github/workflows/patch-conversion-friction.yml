@@ -1,0 +1,131 @@
+name: Patch conversion friction
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Restore full scoreProjection and apply friction
+        run: |
+          set -e
+          # Restore complete file from last known-good commit (before partial overwrites)
+          git show 860de8b0d492292548940a088ee0a9476d3c0f81:src/lib/scoreProjection.ts > src/lib/scoreProjection.ts
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path('src/lib/scoreProjection.ts')
+          t = p.read_text()
+          assert 'function teamBreakdown' in t and 'export function getGameDetail' in t
+
+          t = t.replace(
+          ''' *   + (projected DST safeties) × 2
+ *   + home-field advantage (+2.5 for home team)''',
+          ''' *   + (projected DST safeties) × 2
+ *   − 1.0 conversion friction (missed XP / failed 2PT / rare scoring leakage)
+ *   + home-field advantage (+2.5 for home team)''',
+          1,
+          )
+
+          t = t.replace(
+          '''export const HOME_FIELD_ADVANTAGE = 2.5
+/** Points per turnover-differential-per-game edge vs the opponent. */
+export const TO_DIFF_POINT_VALUE = 1.75''',
+          '''export const HOME_FIELD_ADVANTAGE = 2.5
+/** Flat per-team deduction for missed XP, failed 2PT, and similar scoring leakage. */
+export const CONVERSION_FRICTION = 1
+/** Points per turnover-differential-per-game edge vs the opponent. */
+export const TO_DIFF_POINT_VALUE = 1.75''',
+          1,
+          )
+
+          t = t.replace(
+          '''  safeties: number
+  safetyPts: number
+  baseScore: number
+  homeField: number''',
+          '''  safeties: number
+  safetyPts: number
+  /** Flat −CONVERSION_FRICTION applied when forming baseScore. */
+  conversionFriction: number
+  baseScore: number
+  homeField: number''',
+          1,
+          )
+
+          t = t.replace(
+          '''    safeties: 0,
+    safetyPts: 0,
+    baseScore: 0,
+    homeField: isHome ? HOME_FIELD_ADVANTAGE : 0,
+    qbBoost: 0,
+    todPerGame: 0,
+    toAdj: 0,
+    finalScore: isHome ? HOME_FIELD_ADVANTAGE : 0,''',
+          '''    safeties: 0,
+    safetyPts: 0,
+    conversionFriction: CONVERSION_FRICTION,
+    baseScore: r1(0 - CONVERSION_FRICTION),
+    homeField: isHome ? HOME_FIELD_ADVANTAGE : 0,
+    qbBoost: 0,
+    todPerGame: 0,
+    toAdj: 0,
+    finalScore: r1((isHome ? HOME_FIELD_ADVANTAGE : 0) - CONVERSION_FRICTION),''',
+          1,
+          )
+
+          t = t.replace(
+          '''  const tdPts = tds * 6
+  const fgPts = bestFg * 3
+  const xpPts = xp * 1
+  const qbBoostR = r2(qbBoost)
+  const baseScore = r1(tdPts + fgPts + xpPts + safetyPts)
+  const homeField = isHome ? HOME_FIELD_ADVANTAGE : 0
+  const finalScore = r1(baseScore + homeField + qbBoostR)''',
+          '''  const tdPts = tds * 6
+  const fgPts = bestFg * 3
+  const xpPts = xp * 1
+  const qbBoostR = r2(qbBoost)
+  // −1 for typical missed XP / failed 2PT / conversion noise per team-game
+  const conversionFriction = CONVERSION_FRICTION
+  const baseScore = r1(tdPts + fgPts + xpPts + safetyPts - conversionFriction)
+  const homeField = isHome ? HOME_FIELD_ADVANTAGE : 0
+  const finalScore = r1(baseScore + homeField + qbBoostR)''',
+          1,
+          )
+
+          t = t.replace(
+          '''    safeties: r2(safetyCount),
+    safetyPts: r1(safetyPts),
+    baseScore,
+    homeField,''',
+          '''    safeties: r2(safetyCount),
+    safetyPts: r1(safetyPts),
+    conversionFriction,
+    baseScore,
+    homeField,''',
+          1,
+          )
+
+          assert 'CONVERSION_FRICTION = 1' in t
+          assert 'safetyPts - conversionFriction' in t
+          assert 'export function getGameDetail' in t
+          p.write_text(t)
+          print('patched bytes', p.stat().st_size)
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/scoreProjection.ts
+          git commit -m "Betting: −1 conversion friction on each team base score"
+          git push origin HEAD:main
