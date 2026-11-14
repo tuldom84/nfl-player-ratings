@@ -331,6 +331,11 @@ export async function profile(id) {
   }
   const fantasyMeta = parseFantasyMeta(overview)
   const team = a.team?.abbreviation || a.teamShortName || 'FA'
+  // ESPN headshot URL (API href or standard CDN path by athlete id)
+  const headshot =
+    a.headshot?.href ||
+    a.headshot?.url ||
+    (id ? `https://a.espncdn.com/i/headshots/nfl/players/full/${id}.png` : undefined)
   return {
     id: String(id),
     name: a.displayName || `Player ${id}`,
@@ -340,6 +345,7 @@ export async function profile(id) {
     team: String(team).slice(0, 4),
     teamId: String(a.team?.id || a.teamId || ''),
     jersey: a.jersey,
+    headshot,
     stats,
     grade: 0,
     gradeLabel: 'Average',
