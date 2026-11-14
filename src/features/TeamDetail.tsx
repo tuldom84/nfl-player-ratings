@@ -91,6 +91,10 @@ export default function TeamDetail() {
     () => rankByField(powerList, (t) => t.power),
     [powerList]
   )
+  const defRpsRankMap = useMemo(
+    () => rankByField(allDef, (d) => d.rps ?? d.grade),
+    [allDef]
+  )
 
   const abbr = offense?.abbreviation || defense?.abbreviation || ''
   const matchup = useMemo(() => resolveNextMatchup(data, abbr), [data, abbr])
@@ -115,6 +119,7 @@ export default function TeamDetail() {
   const power = Math.round(((offRps + defRps) / 2) * 10) / 10
   const powerEntry = powerList.find((t) => t.id === id)
   const powerRank = powerEntry ? powerRankMap.get(powerEntry) : undefined
+  const defRpsRank = defense ? defRpsRankMap.get(defense) : undefined
 
   const os = offense?.stats || {}
   const og = Math.max(1, os.gamesPlayed || 1)
@@ -314,8 +319,8 @@ export default function TeamDetail() {
           },
           {
             id: 'def',
-            label: 'DEF rank',
-            rank: defense?.rank != null ? `#${defense.rank}` : '—',
+            label: 'DEF RPS',
+            rank: defRpsRank != null ? `#${defRpsRank}` : '—',
             score: `${defRps.toFixed(1)}`,
             sublabel: defense?.rpsLabel ?? defense?.gradeLabel ?? '—',
             accent: 'sky',
@@ -331,8 +336,8 @@ export default function TeamDetail() {
             body: 'Team offense real-football value among 32 teams (uses net yards/game). Drives DST matchup multipliers.',
           },
           {
-            title: 'DEF rank',
-            body: 'Team defense fantasy grade rank among 32 DSTs (league scoring settings).',
+            title: 'DEF RPS rank',
+            body: 'Real-football defensive value among 32 teams, same order as the DST RPS ranking. Not the fantasy grade rank.',
           },
         ]}
       />
