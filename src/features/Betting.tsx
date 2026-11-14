@@ -52,7 +52,7 @@ export default function Betting() {
         Questionable or day-to-day −10%, Doubtful −30%. Out, IR, and suspension are not
         penalized. RB/WR/TE TDs/g are multiplied by availability (games played / team
         games). The QB is not — only the 10% (questionable or day-to-day) or 30% (doubtful)
-        injury cut. If the player TD sum is under 80% of the team's offensive TDs/g, raw TDs
+        injury cut. If the player TD sum is under 85% of the team's offensive TDs/g, raw TDs
         is the average of those two before the matchup factor. XP equals adjusted TDs (1 per TD).
         Pass/rec TDs counted once (no double-count of QB pass TDs).
         Spreads shown from each score rounded to the nearest point, with the raw margin in parentheses.

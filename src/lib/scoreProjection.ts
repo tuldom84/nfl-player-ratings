@@ -35,7 +35,7 @@
  *   XP = adjusted TDs (one extra point per TD)
  *
  * Before the matchup factor, raw TDs are the selected-player sum. If that
- * sum is under 80% of the team's offensive TDs/g (pass + rush), raw TDs
+ * sum is under 85% of the team's offensive TDs/g (pass + rush), raw TDs
  * become the average of the player sum and the team rate.
  *
  * If a required slot is missing or on bye:
@@ -238,9 +238,9 @@ export type TeamScoreBreakdown = {
   abbr: string
   /** Unadjusted sum of player/placeholder TDs (before matchup factor) */
   rawTds: number
-  /** Team offensive TDs/g (pass + rush) used for the 80% floor. */
+  /** Team offensive TDs/g (pass + rush) used for the 85% floor. */
   offTdPg: number
-  /** True when player raw TDs were under 80% of offTdPg and averaged with it. */
+  /** True when player raw TDs were under 85% of offTdPg and averaged with it. */
   rawTdBlended: boolean
   /** rawTds * tdFactor */
   tds: number
@@ -421,7 +421,7 @@ function teamBreakdown(
   // If the constructed roster is short of the team's real scoring rate, blend.
   const offTdPg = offenseTdPerGame(offense)
   let rawTdBlended = false
-  if (offTdPg > 0 && rawTds < offTdPg * 0.8) {
+  if (offTdPg > 0 && rawTds < offTdPg * 0.85) {
     rawTds = (rawTds + offTdPg) / 2
     rawTdBlended = true
   }

@@ -89,7 +89,7 @@ function ScoreCalcTable({
       label: 'Raw TDs',
       a: fmt(away.rawTds, 2),
       h: fmt(home.rawTds, 2),
-      note: `Team off TDs/g ${fmt(away.offTdPg, 2)} / ${fmt(home.offTdPg, 2)}. If the player sum is under 80% of that, raw TDs is the average of the two${
+      note: `Team off TDs/g ${fmt(away.offTdPg, 2)} / ${fmt(home.offTdPg, 2)}. If the player sum is under 85% of that, raw TDs is the average of the two${
         away.rawTdBlended || home.rawTdBlended ? ' (applied)' : ''
       }`,
     },
@@ -504,7 +504,7 @@ export default function BettingGameDetail() {
         rates (and the kicker): Questionable or day-to-day −10%, Doubtful −30%. No other
         injury penalty. RB/WR/TE TDs/g × availability (games played / team games). The QB
         is not scaled by availability; questionable or day-to-day is −10% and doubtful is −30%.
-        If player TDs are under 80% of team offensive TDs/g (pass + rush), raw TDs is the average
+        If player TDs are under 85% of team offensive TDs/g (pass + rush), raw TDs is the average
         of the two before the TD factor. Projected XP equals adjusted TDs.
         Home field +{HOME_FIELD_ADVANTAGE} applied to {home} only.
         Net TO differential: (own TOD/g − opp TOD/g) × {TO_DIFF_POINT_VALUE} is added to that
