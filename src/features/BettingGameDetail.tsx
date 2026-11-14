@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
-import { getGameDetail, HOME_FIELD_ADVANTAGE, TO_DIFF_POINT_VALUE, type TeamScoreBreakdown } from '../lib/scoreProjection'
+import { getGameDetail, HOME_FIELD_ADVANTAGE, TO_DIFF_POINT_VALUE, CONVERSION_FRICTION, type TeamScoreBreakdown } from '../lib/scoreProjection'
 
 function fmt(n: number, d = 1) {
   return n.toFixed(d)
@@ -145,9 +145,16 @@ function ScoreCalcTable({
       h: fmt(home.safetyPts),
     },
     {
+      label: `Conversion friction (−${CONVERSION_FRICTION})`,
+      a: fmt(-(away.conversionFriction ?? CONVERSION_FRICTION)),
+      h: fmt(-(home.conversionFriction ?? CONVERSION_FRICTION)),
+      note: 'Missed XP / failed 2PT / scoring leakage (~1 pt per team-game)',
+    },
+    {
       label: 'Base score',
       a: fmt(away.baseScore),
       h: fmt(home.baseScore),
+      note: 'TD + FG + XP + safety − conversion friction',
     },
     {
       label: `Home field (+${HOME_FIELD_ADVANTAGE})`,
