@@ -1,29 +1,49 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import {
+  optimizeHeadshotUrl,
+  headshotDisplayPx,
+  type HeadshotSize,
+} from '../lib/headshot'
 
-type Size = 'sm' | 'md' | 'lg'
-
-const sizeCls: Record<Size, string> = {
+const sizeCls: Record<HeadshotSize, string> = {
   sm: 'w-9 h-9 text-[10px]',
   md: 'w-12 h-12 text-sm',
   lg: 'w-16 h-16 text-xl',
 }
 
-/** ESPN player headshot with position-letter fallback. */
+/** ESPN player headshot with position-letter fallback and sized CDN requests. */
 export function PlayerHeadshot({
   src,
   name,
   position,
   size = 'md',
   className = '',
+  priority = false,
 }: {
   src?: string | null
   name?: string
   position?: string
-  size?: Size
+  size?: HeadshotSize
   className?: string
+  /** Eager-load for above-the-fold detail headers. */
+  priority?: boolean
 }) {
-  const [failed, setFailed] = useState(false)
-  const showImg = Boolean(src) && !failed
+  const [stage, setStage] = useState<'optimized' | 'original' | 'done'>('optimized')
+  const optimized = useMemo(() => optimizeHeadshotUrl(src, size), [src, size])
+  const original = src || undefined
+
+  const activeSrc =
+    stage === 'optimized' ? optimized : stage === 'original' ? original : undefined
+  const showImg = Boolean(activeSrc)
+  const px = headshotDisplayPx(size)
+
+  function onError() {
+    if (stage === 'optimized' && original && original !== optimized) {
+      setStage('original')
+      return
+    }
+    setStage('done')
+  }
 
   return (
     <div
@@ -31,12 +51,17 @@ export function PlayerHeadshot({
     >
       {showImg ? (
         <img
-          src={src!}
+          key={activeSrc}
+          src={activeSrc}
           alt={name || position || 'Player'}
+          width={px}
+          height={px}
           className="w-full h-full object-cover object-top"
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailed(true)}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding={priority ? 'sync' : 'async'}
+          fetchPriority={priority ? 'high' : 'low'}
+          referrerPolicy="no-referrer"
+          onError={onError}
         />
       ) : (
         <span>{position || '?'}</span>
