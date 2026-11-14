@@ -35,7 +35,7 @@
  *   XP = adjusted TDs (one extra point per TD)
  *
  * Before the matchup factor, raw TDs are the selected-player sum. If that
- * sum is under 85% of the team's offensive TDs/g (pass + rush), raw TDs
+ * sum is under 85% of the team's total TDs/g, raw TDs
  * become the average of the player sum and the team rate.
  *
  * If a required slot is missing or on bye:
@@ -238,7 +238,9 @@ export type TeamScoreBreakdown = {
   abbr: string
   /** Unadjusted sum of player/placeholder TDs (before matchup factor) */
   rawTds: number
-  /** Team offensive TDs/g (pass + rush) used for the 85% floor. */
+  /** Selected-player TD/g before the team-rate blend. */
+  playerTds: number
+  /** Team total TDs/g used for the 85% floor. */
   offTdPg: number
   /** True when player raw TDs were under 85% of offTdPg and averaged with it. */
   rawTdBlended: boolean
@@ -268,14 +270,14 @@ export type TeamScoreBreakdown = {
   kickerName?: string
 }
 
-/** Team offensive TDs per game (pass + rush). 0 when the offense row is missing. */
+/** Team total touchdowns per game. Falls back to pass + rush when total TDs are missing. */
 function offenseTdPerGame(offense?: TeamOffense): number {
   const s = offense?.stats
   if (!s) return 0
   const g = Math.max(1, s.gamesPlayed || 1)
-  const scoring = safe(s.passTDs) + safe(s.rushTDs)
-  if (scoring > 0) return scoring / g
-  return safe(s.totalTDs) / g
+  const total = safe(s.totalTDs)
+  if (total > 0) return total / g
+  return (safe(s.passTDs) + safe(s.rushTDs)) / g
 }
 
 function teamBreakdown(
@@ -291,6 +293,7 @@ function teamBreakdown(
   const empty: TeamScoreBreakdown = {
     abbr: teamAbbr,
     rawTds: 0,
+    playerTds: 0,
     offTdPg: 0,
     rawTdBlended: false,
     tds: 0,
@@ -419,10 +422,11 @@ function teamBreakdown(
   contributors.sort((a, b) => b.tds - a.tds)
 
   // If the constructed roster is short of the team's real scoring rate, blend.
+  const playerTds = rawTds
   const offTdPg = offenseTdPerGame(offense)
   let rawTdBlended = false
-  if (offTdPg > 0 && rawTds < offTdPg * 0.85) {
-    rawTds = (rawTds + offTdPg) / 2
+  if (offTdPg > 0 && playerTds < offTdPg * 0.85) {
+    rawTds = (playerTds + offTdPg) / 2
     rawTdBlended = true
   }
 
@@ -483,6 +487,7 @@ function teamBreakdown(
   return {
     abbr: teamAbbr,
     rawTds: r2(rawTds),
+    playerTds: r2(playerTds),
     offTdPg: r2(offTdPg),
     rawTdBlended,
     tds: r2(tds),
