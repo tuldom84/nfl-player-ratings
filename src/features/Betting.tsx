@@ -43,6 +43,8 @@ export default function Betting() {
         <p className="border-t border-slate-800 px-3 py-2.5">
         Team score = matchup-adjusted
         offensive TDs × 6 + FG × 3 + XP × 1 + DST safeties × 2, then{' '}
+        <strong className="text-slate-300">−1 conversion friction</strong> (missed XP /
+        2PT noise), then{' '}
         <strong className="text-slate-300">+2.5 home-field</strong>, plus a small{' '}
         <strong className="text-slate-300">QB quality boost</strong>{' '}
         of (RPS/100) × (pass TD/g − INT/g), then{' '}
