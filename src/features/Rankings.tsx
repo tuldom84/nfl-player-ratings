@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Position } from '../lib/types'
+import { PlayerHeadshot } from '../components/PlayerHeadshot'
 
 const POSITIONS: (Position | 'ALL' | 'OFF' | 'POWER')[] = [
   'ALL',
@@ -23,6 +24,7 @@ type RankRow = {
   name: string
   team: string
   position: string
+  headshot?: string
   displayGrade: number
   valueGrade: number
   posGrade: number
@@ -186,6 +188,7 @@ export default function Rankings() {
           name: p.name,
           team: p.team,
           position: p.position,
+          headshot: p.headshot,
           displayGrade: p.valueGrade ?? p.grade,
           valueGrade: p.valueGrade ?? p.grade,
           posGrade: p.grade,
@@ -222,6 +225,7 @@ export default function Rankings() {
           name: p.name,
           team: p.team,
           position: p.position,
+          headshot: p.headshot,
           displayGrade: p.grade,
           valueGrade: p.valueGrade ?? p.grade,
           posGrade: p.grade,
@@ -363,6 +367,13 @@ export default function Rankings() {
           const inner = (
             <>
               <span className="w-7 text-right text-sm text-slate-500 tabular-nums">{idx + 1}</span>
+              {!p.isDefense && p.position !== 'OFF' && p.position !== 'POWER' ? (
+                <PlayerHeadshot src={p.headshot} name={p.name} position={p.position} size="sm" />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400 flex-shrink-0">
+                  {p.position === 'POWER' ? 'TM' : p.position === 'OFF' ? 'OFF' : 'DST'}
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">
                   {p.name}
