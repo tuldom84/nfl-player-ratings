@@ -2,7 +2,10 @@ name: Weekly ESPN Data Sync
 
 on:
   schedule:
-    - cron: '0 10 * * 2'
+    # Tuesday ~9:00 AM America/New_York (14:00 UTC)
+    - cron: '0 14 * * 2'
+    # Friday ~6:00 PM America/New_York EST (23:00 UTC) — refresh injuries for Sun/Mon games
+    - cron: '0 23 * * 5'
   workflow_dispatch:
 
 # contents: write — commit public/data
@@ -37,7 +40,7 @@ jobs:
             echo "No data changes to commit"
             echo "pushed=false" >> "$GITHUB_OUTPUT"
           else
-            git commit -m "chore: weekly ESPN data lake sync $(date -u +%Y-%m-%d)"
+            git commit -m "chore: ESPN data lake sync $(date -u +%Y-%m-%d)"
             git pull --rebase origin main || true
             git push origin HEAD:main
             echo "Pushed data lake"
