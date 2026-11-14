@@ -11,6 +11,7 @@ import {
   type StatRowDef,
 } from '../lib/statRanks'
 import type { Player, PlayerStats } from '../lib/types'
+import { PlayerHeadshot } from '../components/PlayerHeadshot'
 
 function injuryColor(status?: string) {
   if (!status || status === 'Active') return 'bg-emerald-900/50 text-emerald-300'
@@ -254,9 +255,7 @@ export default function PlayerDetail() {
       </div>
 
       <div className="flex items-start gap-4 mb-4">
-        <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-xl font-bold text-slate-400">
-          {player.position}
-        </div>
+        <PlayerHeadshot src={player.headshot} name={player.name} position={player.position} size="lg" />
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">{player.name}</h1>
           <p className="text-slate-400">
