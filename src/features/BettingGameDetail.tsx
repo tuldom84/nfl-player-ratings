@@ -90,13 +90,10 @@ function ScoreCalcTable({
       a: fmt(away.rawTds, 2),
       h: fmt(home.rawTds, 2),
       note: [
-        `${away.abbr} ${fmt(away.playerTds, 2)}/${fmt(away.offTdPg, 2)}`,
-        `${home.abbr} ${fmt(home.playerTds, 2)}/${fmt(home.offTdPg, 2)}`,
+        `${away.abbr} ${fmt(away.playerTds, 2)}/${fmt(away.offTdPg, 2)}${away.rawTdBlended ? ' averaged' : ''}`,
+        `${home.abbr} ${fmt(home.playerTds, 2)}/${fmt(home.offTdPg, 2)}${home.rawTdBlended ? ' averaged' : ''}`,
         'Player TDs / that team’s total TDs/g. Under 85% uses the average',
-        away.rawTdBlended || home.rawTdBlended ? '(applied)' : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      ].join(' · '),
     },
     {
       label: 'TD factor',
