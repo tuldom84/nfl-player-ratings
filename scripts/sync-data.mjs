@@ -298,8 +298,8 @@ function readPreviousPredictions() {
 
 async function updatePredictionHistory(previousPredictions, lake, currentSchedule, now) {
   const predictions = [...previousPredictions]
-  const byEvent = new Set(
-    predictions.map((prediction) => `${prediction.season}:${prediction.eventId}`)
+  const byEvent = new Map(
+    predictions.map((prediction) => [`${prediction.season}:${prediction.eventId}`, prediction])
   )
 
   const pendingSchedules = new Set(
@@ -315,6 +315,7 @@ async function updatePredictionHistory(previousPredictions, lake, currentSchedul
     }
   }
 
+  // Fill in final scores for any still-pending predictions
   for (const prediction of predictions) {
     if (prediction.actualHomeScore != null && prediction.actualAwayScore != null) continue
     const game = schedules
@@ -326,13 +327,34 @@ async function updatePredictionHistory(previousPredictions, lake, currentSchedul
     }
   }
 
+  // Create or refresh predictions for current projection-week pregame matchups.
+  // Pending (not final) rows are updated so the log tracks the latest model when
+  // injuries / algorithm / data change mid-week. Finals are left locked.
   const normalizedLake = applyScoringSettings(lake, defaultSettings())
+  let created = 0
+  let refreshed = 0
   for (const projected of projectWeekGames(normalizedLake)) {
     const game = currentSchedule.games.find(
       (item) => item.home === projected.home && item.away === projected.away && item.pregame
     )
-    if (!game?.eventId || byEvent.has(`${SEASON}:${game.eventId}`)) continue
-    byEvent.add(`${SEASON}:${game.eventId}`)
+    if (!game?.eventId) continue
+    const key = `${SEASON}:${game.eventId}`
+    const existing = byEvent.get(key)
+    if (existing && existing !== true) {
+      // Only rewrite while still pending (no actuals yet)
+      if (existing.actualHomeScore == null && existing.actualAwayScore == null) {
+        existing.predictedHomeScore = projected.homeScore
+        existing.predictedAwayScore = projected.awayScore
+        existing.predictedAt = now.toISOString()
+        existing.week = lake.meta.projectionWeek
+        if (game.marketHomeSpread != null) existing.marketHomeSpread = game.marketHomeSpread
+        if (game.marketTotal != null) existing.marketTotal = game.marketTotal
+        if (game.oddsProvider) existing.oddsProvider = game.oddsProvider
+        refreshed++
+      }
+      continue
+    }
+    byEvent.set(key, true)
     predictions.push({
       season: SEASON,
       week: lake.meta.projectionWeek,
@@ -346,7 +368,9 @@ async function updatePredictionHistory(previousPredictions, lake, currentSchedul
       marketTotal: game.marketTotal,
       oddsProvider: game.oddsProvider,
     })
+    created++
   }
+  console.log('Predictions: created', created, 'refreshed pending', refreshed, 'total', predictions.length)
   return predictions
 }
 
