@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import { projectWeekGames } from '../lib/scoreProjection'
 import BettingLog from './BettingLog'
+import DataLoadError from '../components/DataLoadError'
 
 /**
  * Model line from scores rounded to the nearest point.
@@ -26,11 +27,11 @@ export default function Betting() {
     return <div className="p-6 text-slate-400">Loading projections…</div>
   }
   if (error) {
-    return <div className="p-6 text-rose-400">{error}</div>
+    return <DataLoadError message={error} />
   }
 
   return (
-    <div className="px-4 pt-4 pb-8">
+    <div className="px-4 lg:px-6 pt-4 pb-8">
       <h1 className="text-2xl font-bold mb-1">Betting</h1>
       <p className="text-xs text-slate-500 mb-4">
         Week {week} projected scores · tap a game for full breakdown
@@ -92,51 +93,61 @@ export default function Betting() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-3">
-                  <div className="text-left">
+                <div className="px-3 pt-3 pb-2">
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                     <div
-                      className={`text-sm font-semibold ${
-                        awayWin ? 'text-emerald-300' : 'text-slate-200'
+                      className={`text-base font-semibold ${
+                        awayWin ? 'text-emerald-300' : 'text-slate-100'
                       }`}
                     >
                       {g.away}
                     </div>
-                    <div className="text-[10px] text-slate-500 tabular-nums">
-                      {g.awayTds.toFixed(1)} TD · {g.awayFg.toFixed(1)} FG · {g.awayXp.toFixed(1)}{' '}
-                      XP · {g.awaySafeties.toFixed(2)} S
+                    <div className="text-center min-w-[6.5rem]">
+                      <div className="text-2xl font-bold tabular-nums leading-tight">
+                        <span className={awayWin ? 'text-emerald-300' : 'text-slate-100'}>
+                          {g.awayScore.toFixed(1)}
+                        </span>
+                        <span className="text-slate-600 mx-1">–</span>
+                        <span className={homeWin ? 'text-emerald-300' : 'text-slate-100'}>
+                          {g.homeScore.toFixed(1)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="text-center min-w-[5.5rem]">
-                    <div className="text-xl font-bold tabular-nums text-slate-100">
-                      <span className={awayWin ? 'text-emerald-300' : ''}>
-                        {g.awayScore.toFixed(1)}
-                      </span>
-                      <span className="text-slate-600 mx-1">–</span>
-                      <span className={homeWin ? 'text-emerald-300' : ''}>
-                        {g.homeScore.toFixed(1)}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-500 tabular-nums">
-                      O/U {g.total.toFixed(1)}
-                      {' · '}
-                      <span className="text-slate-400">{spreadLabel}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
                     <div
-                      className={`text-sm font-semibold ${
-                        homeWin ? 'text-emerald-300' : 'text-slate-200'
+                      className={`text-base font-semibold text-right ${
+                        homeWin ? 'text-emerald-300' : 'text-slate-100'
                       }`}
                     >
                       {g.home}
                     </div>
-                    <div className="text-[10px] text-slate-500 tabular-nums">
-                      {g.homeTds.toFixed(1)} TD · {g.homeFg.toFixed(1)} FG · {g.homeXp.toFixed(1)}{' '}
-                      XP · {g.homeSafeties.toFixed(2)} S
-                    </div>
                   </div>
+                  <div className="text-center mt-1.5 text-xs text-slate-300 tabular-nums">
+                    O/U {g.total.toFixed(1)}
+                    {' · '}
+                    {spreadLabel}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800/80 px-3 py-2 grid grid-cols-[auto_repeat(4,minmax(0,1fr))] gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
+                  <span className="text-slate-500" />
+                  <span className="text-center text-slate-500">TD</span>
+                  <span className="text-center text-slate-500">FG</span>
+                  <span className="text-center text-slate-500">XP</span>
+                  <span className="text-center text-slate-500" title="Safeties">Safeties</span>
+                  <span className={awayWin ? 'text-emerald-400 font-medium' : 'text-slate-400'}>
+                    {g.away}
+                  </span>
+                  <span className="text-center text-slate-300">{g.awayTds.toFixed(1)}</span>
+                  <span className="text-center text-slate-300">{g.awayFg.toFixed(1)}</span>
+                  <span className="text-center text-slate-300">{g.awayXp.toFixed(1)}</span>
+                  <span className="text-center text-slate-300">{g.awaySafeties.toFixed(2)}</span>
+                  <span className={homeWin ? 'text-emerald-400 font-medium' : 'text-slate-400'}>
+                    {g.home}
+                  </span>
+                  <span className="text-center text-slate-300">{g.homeTds.toFixed(1)}</span>
+                  <span className="text-center text-slate-300">{g.homeFg.toFixed(1)}</span>
+                  <span className="text-center text-slate-300">{g.homeXp.toFixed(1)}</span>
+                  <span className="text-center text-slate-300">{g.homeSafeties.toFixed(2)}</span>
                 </div>
               </Link>
             </li>

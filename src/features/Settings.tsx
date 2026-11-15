@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   type ScoringSettings,
   type ScoringPreset,
@@ -102,7 +103,7 @@ export default function Settings() {
   const d = draft.dst
 
   return (
-    <div className="px-4 pt-4 pb-8">
+    <div className="px-4 lg:px-6 pt-4 pb-8">
       <h1 className="text-2xl font-bold mb-1">Settings</h1>
       <p className="text-xs text-slate-500 mb-4">
         Scoring rules apply instantly to grades, averages, and projections. Saved on this device.
@@ -382,6 +383,12 @@ export default function Settings() {
           Reset
         </button>
       </div>
+
+      <p className="text-center mt-6 lg:hidden">
+        <Link to="/about" className="text-sm font-medium text-slate-400 hover:text-emerald-400">
+          About this app
+        </Link>
+      </p>
     </div>
   )
 }
