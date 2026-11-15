@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useDataLake } from '../hooks/useDataLake'
 import type { Player, Position } from '../lib/types'
+import DataLoadError from '../components/DataLoadError'
+import { PlayerHeadshot } from '../components/PlayerHeadshot'
 
 const MAX = 5
 const STORAGE_KEY = 'compare-ids'
@@ -98,6 +100,18 @@ export default function Compare() {
       .slice(0, 12)
   }, [data, query, pos, selectedIds])
 
+  const suggestions = useMemo(() => {
+    if (!data) return [] as Player[]
+    return [...data.players]
+      .filter((p) => {
+        if (selectedIds.includes(p.id)) return false
+        if (pos !== 'ALL' && p.position !== pos) return false
+        return true
+      })
+      .sort((a, b) => (b.valueGrade ?? b.grade) - (a.valueGrade ?? a.grade))
+      .slice(0, 8)
+  }, [data, selectedIds, pos])
+
   function addPlayer(id: string) {
     if (selectedIds.includes(id) || selectedIds.length >= MAX) return
     setSelectedIds((prev) => [...prev, id])
@@ -172,7 +186,7 @@ export default function Compare() {
   }, [selected, tradeSide])
 
   if (loading) return <div className="p-6 text-slate-400">Loading…</div>
-  if (error || !data) return <div className="p-6 text-rose-400">{error || 'No data'}</div>
+  if (error || !data) return <DataLoadError message={error || 'No data'} />
 
   const week = data.meta.projectionWeek || data.meta.week
 
@@ -238,7 +252,7 @@ export default function Compare() {
   }
 
   return (
-    <div className="px-4 pt-4 pb-8">
+    <div className="px-4 lg:px-6 pt-4 pb-8">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-2xl font-bold">Compare</h1>
         {selectedIds.length > 0 && (
@@ -282,8 +296,8 @@ export default function Compare() {
               <button
                 key={p}
                 onClick={() => setPos(p)}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium ${
-                  pos === p ? 'bg-slate-700 text-white' : 'text-slate-500'
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${
+                  pos === p ? 'bg-slate-700 text-white' : 'bg-slate-800/70 text-slate-300'
                 }`}
               >
                 {p}
@@ -548,10 +562,36 @@ export default function Compare() {
         </div>
       )}
 
-      {selected.length === 0 && (
-        <div className="mt-8 text-center text-slate-500 text-sm">
-          <p className="mb-2">Search above to add players</p>
-          <p className="text-xs">Tip: open a player and tap “+ Compare”</p>
+      {selected.length === 0 && !query.trim() && (
+        <div className="mt-2">
+          <h2 className="text-sm font-semibold text-slate-200 mb-1">Suggested</h2>
+          <p className="text-xs text-slate-500 mb-3">
+            Top overall value · or search above · tip: open a player and tap “+ Compare”
+          </p>
+          <ul className="space-y-1">
+            {suggestions.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => addPlayer(p.id)}
+                  className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg text-left hover:bg-slate-900 active:bg-slate-800"
+                >
+                  <PlayerHeadshot src={p.headshot} name={p.name} position={p.position} size="sm" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-medium truncate text-slate-100">{p.name}</span>
+                    <span className="text-xs text-slate-400">
+                      {p.team} · {p.position}
+                      {p.rankOverall != null ? ` · #${p.rankOverall} overall` : ''}
+                    </span>
+                  </span>
+                  <span className="text-emerald-400 text-sm tabular-nums font-semibold">
+                    {(p.valueGrade ?? p.grade).toFixed(0)}
+                    <span className="text-[10px] text-slate-500 font-normal"> val</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

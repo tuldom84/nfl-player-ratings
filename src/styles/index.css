@@ -23,8 +23,11 @@ body {
   overscroll-behavior: none;
 }
 
-/* Touch-friendly minimum targets */
-button, a, [role="button"] {
+/* Touch-friendly minimum targets — nav and explicit controls only.
+   Do not force 44×44 on every link/button (inline About links, chips, table headers). */
+nav a,
+nav button,
+.touch-target {
   min-height: 44px;
   min-width: 44px;
 }
